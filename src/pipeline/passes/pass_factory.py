@@ -38,6 +38,13 @@ from .person_passes import (
     Pass14_RelationshipAnalysis,
     Pass15_InterventionRecommendations
 )
+from .advanced_passes import (
+    Pass16_LanguagePatternAnalysis,
+    Pass17_CrossValidation,
+    Pass18_PatternCorrelation,
+    Pass19_AnomalyDetection,
+    Pass20_FinalConfidenceAssessment
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +128,11 @@ class PassFactory:
             (13, self._create_pass13, 2),  # Parallel group 2
             (14, self._create_pass14, 2),  # Parallel group 2
             (15, self._create_pass15, None),
+            (16, self._create_pass16, None),
+            (17, self._create_pass17, None),
+            (18, self._create_pass18, 3),  # Parallel group 3
+            (19, self._create_pass19, 3),  # Parallel group 3
+            (20, self._create_pass20, None),
         ]
 
         # Register enabled passes
@@ -240,6 +252,36 @@ class PassFactory:
             cache_manager=self.cache_manager
         )
 
+    def _create_pass16(self) -> BasePass:
+        """Create Pass 16: Language Pattern Analysis"""
+        return Pass16_LanguagePatternAnalysis(
+            cache_manager=self.cache_manager
+        )
+
+    def _create_pass17(self) -> BasePass:
+        """Create Pass 17: Cross-Validation"""
+        return Pass17_CrossValidation(
+            cache_manager=self.cache_manager
+        )
+
+    def _create_pass18(self) -> BasePass:
+        """Create Pass 18: Pattern Correlation"""
+        return Pass18_PatternCorrelation(
+            cache_manager=self.cache_manager
+        )
+
+    def _create_pass19(self) -> BasePass:
+        """Create Pass 19: Anomaly Detection"""
+        return Pass19_AnomalyDetection(
+            cache_manager=self.cache_manager
+        )
+
+    def _create_pass20(self) -> BasePass:
+        """Create Pass 20: Final Confidence Assessment"""
+        return Pass20_FinalConfidenceAssessment(
+            cache_manager=self.cache_manager
+        )
+
     def create_custom_registry(self, pass_configs: List[Dict[str, Any]]) -> PassRegistry:
         """
         Create a custom registry with specific pass configurations.
@@ -290,17 +332,19 @@ class PassFactory:
             Dict with pass information
         """
         return {
-            'total_passes': 15,
+            'total_passes': 20,
             'groups': {
                 'normalization': [1, 2, 3],
                 'behavioral': [4, 5, 6],
                 'communication': [7, 8],
                 'timeline': [9, 10],
-                'person_centric': [11, 12, 13, 14, 15]
+                'person_centric': [11, 12, 13, 14, 15],
+                'advanced_analysis': [16, 17, 18, 19, 20]
             },
             'parallel_groups': {
                 1: [4, 5, 6],  # Behavioral passes
-                2: [12, 13, 14]  # Person analysis passes
+                2: [12, 13, 14],  # Person analysis passes
+                3: [18, 19]  # Pattern correlation and anomaly detection
             },
             'dependencies': {
                 3: [2],
@@ -310,6 +354,11 @@ class PassFactory:
                 12: [11],
                 13: [5, 11],
                 14: [11],
-                15: [8, 11, 13, 14]
+                15: [8, 11, 13, 14],
+                16: [2, 11],  # Language patterns depend on sentiment and person identification
+                17: [4, 5, 6, 13],  # Cross-validation depends on behavioral passes
+                18: [3, 4, 9],  # Pattern correlation depends on emotional dynamics, grooming, timeline
+                19: [2, 9],  # Anomaly detection depends on sentiment and timeline
+                20: [8, 17, 18]  # Final assessment depends on risk, cross-validation, correlation
             }
         }

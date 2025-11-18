@@ -84,6 +84,21 @@ from .pass_comparator import (
     PassResultComparator,
     get_comparator
 )
+from .confidence_framework import (
+    ConfidenceLevel,
+    Evidence,
+    Finding,
+    ConfidenceScorer,
+    EvidenceAggregator,
+    get_evidence_aggregator
+)
+from .advanced_passes import (
+    Pass16_LanguagePatternAnalysis,
+    Pass17_CrossValidation,
+    Pass18_PatternCorrelation,
+    Pass19_AnomalyDetection,
+    Pass20_FinalConfidenceAssessment
+)
 
 __all__ = [
     # Base classes
@@ -140,4 +155,19 @@ __all__ = [
     'get_visualizer',
     'PassResultComparator',
     'get_comparator',
+
+    # Confidence framework
+    'ConfidenceLevel',
+    'Evidence',
+    'Finding',
+    'ConfidenceScorer',
+    'EvidenceAggregator',
+    'get_evidence_aggregator',
+
+    # Advanced passes (16-20)
+    'Pass16_LanguagePatternAnalysis',
+    'Pass17_CrossValidation',
+    'Pass18_PatternCorrelation',
+    'Pass19_AnomalyDetection',
+    'Pass20_FinalConfidenceAssessment',
 ]
