@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: msgproc-postgres
+    environment:
+      POSTGRES_DB: messagestore
+      POSTGRES_USER: msgprocess
+      POSTGRES_PASSWORD: DHifde93jes9dk
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/postgresql_schema.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - msgproc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msgprocess -d messagestore"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: msgproc-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - msgproc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Message Processor Web Application
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: msgproc-webapp
+    environment:
+      # Flask configuration
+      FLASK_APP: webapp.py
+      FLASK_ENV: production
+      SECRET_KEY: ${SECRET_KEY:-change_this_secret_key_in_production}
+
+      # PostgreSQL connection
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: messagestore
+      POSTGRES_USER: msgprocess
+      POSTGRES_PASSWORD: DHifde93jes9dk
+
+      # Redis connection
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # Application settings
+      MAX_WORKERS: 4
+      UPLOAD_MAX_SIZE: 52428800  # 50MB
+
+    volumes:
+      - ./uploads:/app/uploads
+      - ./results:/app/results
+      - ./logs:/app/logs
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - msgproc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: msgproc-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@msgprocessor.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - msgproc-network
+    restart: unless-stopped
+    profiles:
+      - tools  # Only starts when 'tools' profile is specified
+
+  # Optional: Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: msgproc-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - msgproc-network
+    restart: unless-stopped
+    profiles:
+      - tools  # Only starts when 'tools' profile is specified
+
+# Named volumes for data persistence
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+# Network configuration
+networks:
+  msgproc-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

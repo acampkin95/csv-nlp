@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Upload CSV - Message Processor{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <h2>Upload CSV File</h2>
+        <p class="text-muted">Upload a chat message CSV file for analysis</p>
+
+        <div class="card mt-4">
+            <div class="card-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="projectName" class="form-label">Project Name</label>
+                        <input type="text" class="form-control" id="projectName" name="project_name"
+                               placeholder="Enter project name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="csvFile" class="form-label">CSV File</label>
+                        <input type="file" class="form-control" id="csvFile" name="file"
+                               accept=".csv" required>
+                        <div class="form-text">Maximum file size: 50MB</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="analysisConfig" class="form-label">Analysis Configuration</label>
+                        <select class="form-select" id="analysisConfig" name="config">
+                            <option value="quick_analysis">Quick Analysis</option>
+                            <option value="deep_analysis" selected>Deep Analysis</option>
+                            <option value="clinical_report">Clinical Report</option>
+                            <option value="legal_report">Legal Report</option>
+                        </select>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-upload"></i> Upload and Analyze
+                        </button>
+                    </div>
+                </form>
+
+                <div id="uploadProgress" class="mt-3" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                    <p class="text-center mt-2">Processing...</p>
+                </div>
+
+                <div id="uploadResult" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-8 offset-md-2">
+        <h4>CSV Format Requirements</h4>
+        <div class="alert alert-info">
+            <p><strong>Required columns:</strong></p>
+            <ul>
+                <li><code>text</code> or <code>Message</code> - The message content</li>
+                <li><code>sender</code> or <code>Sender Name</code> - Who sent the message</li>
+                <li><code>date</code> or <code>Date</code> - When the message was sent</li>
+            </ul>
+            <p class="mb-0"><strong>Optional columns:</strong> time, Type, Service, Recipients, Attachment</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    $('#uploadForm').on('submit', function(e) {
+        e.preventDefault();
+
+        var formData = new FormData(this);
+
+        $('#uploadProgress').show();
+        $('#uploadResult').hide();
+
+        $.ajax({
+            url: '/api/upload',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                $('#uploadProgress').hide();
+                $('#uploadResult').html(`
+                    <div class="alert alert-success">
+                        <h5><i class="fas fa-check-circle"></i> Upload Successful!</h5>
+                        <p>File: ${response.filename}</p>
+                        <p>Rows: ${response.rows} | Columns: ${response.columns}</p>
+                        <hr>
+                        <p class="mb-0">Starting analysis...</p>
+                    </div>
+                `).show();
+
+                // Start analysis
+                startAnalysis(response.csv_session_id, response.project_id);
+            },
+            error: function(xhr) {
+                $('#uploadProgress').hide();
+                var error = xhr.responseJSON ? xhr.responseJSON.error : 'Upload failed';
+                $('#uploadResult').html(`
+                    <div class="alert alert-danger">
+                        <h5><i class="fas fa-exclamation-circle"></i> Upload Failed</h5>
+                        <p>${error}</p>
+                    </div>
+                `).show();
+            }
+        });
+    });
+});
+
+function startAnalysis(csvSessionId, projectId) {
+    var config = $('#analysisConfig').val();
+
+    $.ajax({
+        url: '/api/analyze',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            csv_session_id: csvSessionId,
+            project_id: projectId,
+            config: config
+        }),
+        success: function(response) {
+            $('#uploadResult').html(`
+                <div class="alert alert-success">
+                    <h5><i class="fas fa-check-circle"></i> Analysis Complete!</h5>
+                    <p>Analysis Run ID: ${response.analysis_run_id}</p>
+                    <hr>
+                    <a href="/analysis/${response.analysis_run_id}" class="btn btn-primary">
+                        View Results
+                    </a>
+                    <a href="/dashboard" class="btn btn-secondary">
+                        Go to Dashboard
+                    </a>
+                </div>
+            `);
+        },
+        error: function(xhr) {
+            var error = xhr.responseJSON ? xhr.responseJSON.error : 'Analysis failed';
+            $('#uploadResult').append(`
+                <div class="alert alert-warning mt-2">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Analysis Failed</h5>
+                    <p>${error}</p>
+                </div>
+            `);
+        }
+    });
+}
+</script>
+{% endblock %}

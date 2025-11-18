@@ -1,0 +1,104 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+bin/
+include/
+pip-selfcheck.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+database.db
+
+# Logs
+logs/
+*.log
+
+# Reports (keep structure, ignore contents)
+Reports/*.json
+Reports/*.csv
+Reports/*.pdf
+!Reports/.gitkeep
+
+# CSV data (sensitive)
+CSV/*.csv
+!CSV/.gitkeep
+
+# Cache
+.cache/
+*.cache
+redis-data/
+
+# Docker
+docker-compose.override.yml
+.dockerignore.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
+secrets/
+
+# OS Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Backups
+*.bak
+*.backup
+*~
+*.tmp
+
+# Archive (optional, can be excluded from repo)
+archive/
+
+# PostgreSQL connection info (keep template only)
+config/*.json
+!config/default.json.template

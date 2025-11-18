@@ -1,0 +1,145 @@
+{
+  "grooming": {
+    "trust_building": [
+      {"regex": "\\byou can trust me\\b", "severity": 0.6, "description": "Direct trust solicitation"},
+      {"regex": "\\bi('ll| will) (always|never) tell\\b", "severity": 0.5, "description": "Promise of secrecy"},
+      {"regex": "\\bour (little )?secret\\b", "severity": 0.8, "description": "Secret keeping language"},
+      {"regex": "\\bjust between (you and me|us)\\b", "severity": 0.6, "description": "Exclusivity language"},
+      {"regex": "\\bi('m| am) (here|always here) for you\\b", "severity": 0.4, "description": "Availability promise"},
+      {"regex": "\\byou('re| are) special to me\\b", "severity": 0.5, "description": "Special relationship"},
+      {"regex": "\\bi understand you (better|more) than\\b", "severity": 0.6, "description": "Unique understanding claim"}
+    ],
+    "isolation": [
+      {"regex": "\\b(they|nobody) (don't|doesn't|won't) understand\\b", "severity": 0.7, "description": "Undermining others"},
+      {"regex": "\\bi'm the only (one|person)\\b", "severity": 0.6, "description": "Sole support claim"},
+      {"regex": "\\bdon't (tell|talk to) (anyone|your)\\b", "severity": 0.8, "description": "Communication restriction"},
+      {"regex": "\\b(they|everyone) (is|are) (against|jealous)\\b", "severity": 0.6, "description": "Creating mistrust"},
+      {"regex": "\\byou don't need (them|anyone else)\\b", "severity": 0.7, "description": "Dependency creation"},
+      {"regex": "\\bwhy do you need to\\b.*\\btalk to\\b", "severity": 0.5, "description": "Questioning external contact"}
+    ],
+    "boundary_testing": [
+      {"regex": "\\bno one (has to|needs to|will) know\\b", "severity": 0.7, "description": "Secrecy encouragement"},
+      {"regex": "\\bit's (ok|okay|fine) if\\b", "severity": 0.4, "description": "Permission giving"},
+      {"regex": "\\bjust this (once|one time)\\b", "severity": 0.5, "description": "Incremental boundary push"},
+      {"regex": "\\byou('re| are) (mature|old) enough\\b", "severity": 0.6, "description": "Maturity flattery"},
+      {"regex": "\\bdon't be (shy|scared|afraid)\\b", "severity": 0.5, "description": "Dismissing hesitation"},
+      {"regex": "\\beveryone does (it|this)\\b", "severity": 0.5, "description": "Normalization attempt"}
+    ],
+    "normalization": [
+      {"regex": "\\bit's (normal|natural|common)\\b", "severity": 0.5, "description": "Normalizing behavior"},
+      {"regex": "\\b(lots of|many) people\\b", "severity": 0.4, "description": "False consensus"},
+      {"regex": "\\bthere's nothing wrong with\\b", "severity": 0.5, "description": "Dismissing concerns"},
+      {"regex": "\\byou're making a big deal\\b", "severity": 0.6, "description": "Minimizing reaction"},
+      {"regex": "\\bit's not that (bad|serious)\\b", "severity": 0.5, "description": "Severity minimization"}
+    ],
+    "desensitization": [
+      {"regex": "\\blet's (try|experiment|explore)\\b", "severity": 0.5, "description": "Experimentation push"},
+      {"regex": "\\byou'll get used to it\\b", "severity": 0.7, "description": "Habituation expectation"},
+      {"regex": "\\bit (gets|will get) easier\\b", "severity": 0.6, "description": "Progressive acceptance"},
+      {"regex": "\\bdon't worry about\\b", "severity": 0.4, "description": "Concern dismissal"},
+      {"regex": "\\byou're overthinking\\b", "severity": 0.5, "description": "Doubt invalidation"}
+    ],
+    "control": [
+      {"regex": "\\byou (have to|must|need to)\\b", "severity": 0.5, "description": "Direct command"},
+      {"regex": "\\bif you (don't|won't)\\b.*\\bi('ll| will)\\b", "severity": 0.7, "description": "Conditional threat"},
+      {"regex": "\\byou owe me\\b", "severity": 0.8, "description": "Obligation creation"},
+      {"regex": "\\bafter (all|everything) i('ve| have)\\b", "severity": 0.6, "description": "Guilt leverage"},
+      {"regex": "\\byou promised\\b", "severity": 0.5, "description": "Promise enforcement"},
+      {"regex": "\\bi('ll| will) be (upset|disappointed|hurt)\\b", "severity": 0.6, "description": "Emotional manipulation"}
+    ]
+  },
+  "manipulation": {
+    "gaslighting": [
+      {"regex": "\\byou('re| are) (crazy|insane|paranoid)\\b", "severity": 0.9, "description": "Mental state attack"},
+      {"regex": "\\bthat never happened\\b", "severity": 0.8, "description": "Reality denial"},
+      {"regex": "\\byou('re| are) (imagining|making|exaggerating)\\b", "severity": 0.7, "description": "Experience invalidation"},
+      {"regex": "\\byou('re| are) (too sensitive|overreacting)\\b", "severity": 0.6, "description": "Emotion invalidation"},
+      {"regex": "\\bi never said that\\b", "severity": 0.7, "description": "Statement denial"},
+      {"regex": "\\byou('re| are) remembering (it |that )?wrong\\b", "severity": 0.8, "description": "Memory questioning"},
+      {"regex": "\\byou('re| are) confused\\b", "severity": 0.6, "description": "Clarity questioning"}
+    ],
+    "blame_shifting": [
+      {"regex": "\\byou made me\\b", "severity": 0.7, "description": "Responsibility transfer"},
+      {"regex": "\\bit's your fault\\b", "severity": 0.8, "description": "Direct blame"},
+      {"regex": "\\bif you (hadn't|didn't|weren't)\\b", "severity": 0.6, "description": "Conditional blame"},
+      {"regex": "\\byou('re| are) the (one|person) who\\b", "severity": 0.6, "description": "Blame redirection"},
+      {"regex": "\\blook what you made me do\\b", "severity": 0.8, "description": "Action blame"},
+      {"regex": "\\byou started (it|this)\\b", "severity": 0.5, "description": "Initiation blame"}
+    ],
+    "emotional_invalidation": [
+      {"regex": "\\byou('re| are) being (dramatic|ridiculous)\\b", "severity": 0.6, "description": "Emotion dismissal"},
+      {"regex": "\\bstop (crying|whining|complaining)\\b", "severity": 0.5, "description": "Expression suppression"},
+      {"regex": "\\byou('re| are) overreacting\\b", "severity": 0.6, "description": "Reaction minimization"},
+      {"regex": "\\bget over it\\b", "severity": 0.7, "description": "Dismissive command"},
+      {"regex": "\\byou're being a baby\\b", "severity": 0.7, "description": "Maturity attack"},
+      {"regex": "\\bstop being so emotional\\b", "severity": 0.6, "description": "Emotion suppression"}
+    ],
+    "guilt_tripping": [
+      {"regex": "\\bafter (all|everything) i('ve| have) done\\b", "severity": 0.6, "description": "Sacrifice leverage"},
+      {"regex": "\\bi can't believe you\\b", "severity": 0.5, "description": "Disappointment expression"},
+      {"regex": "\\byou('re| are) so ungrateful\\b", "severity": 0.7, "description": "Gratitude attack"},
+      {"regex": "\\bi (sacrificed|gave up)\\b.*\\bfor you\\b", "severity": 0.7, "description": "Sacrifice reminder"},
+      {"regex": "\\byou don't care about\\b", "severity": 0.6, "description": "Care questioning"},
+      {"regex": "\\bhow could you\\b", "severity": 0.5, "description": "Moral questioning"}
+    ],
+    "love_bombing": [
+      {"regex": "\\byou('re| are) (perfect|amazing|incredible)\\b", "severity": 0.4, "description": "Excessive praise"},
+      {"regex": "\\bi('ve| have) never (felt|met|known)\\b", "severity": 0.5, "description": "Uniqueness claim"},
+      {"regex": "\\byou('re| are) my (everything|world|life)\\b", "severity": 0.6, "description": "Excessive importance"},
+      {"regex": "\\bi (can't|cannot) (live|be) without you\\b", "severity": 0.7, "description": "Dependency declaration"},
+      {"regex": "\\bsoulmate\\b", "severity": 0.5, "description": "Destiny language"},
+      {"regex": "\\byou complete me\\b", "severity": 0.6, "description": "Completion dependency"}
+    ],
+    "threats": [
+      {"regex": "\\bi('ll| will) (hurt|harm|kill)\\b", "severity": 0.95, "description": "Direct threat"},
+      {"regex": "\\byou'll (regret|pay|be sorry)\\b", "severity": 0.8, "description": "Future consequence"},
+      {"regex": "\\bi('ll| will) (tell|expose|reveal)\\b", "severity": 0.7, "description": "Exposure threat"},
+      {"regex": "\\bif you (leave|go|tell)\\b.*\\bi('ll| will)\\b", "severity": 0.8, "description": "Conditional threat"},
+      {"regex": "\\byou'll see what happens\\b", "severity": 0.7, "description": "Vague threat"},
+      {"regex": "\\bdon't test me\\b", "severity": 0.6, "description": "Warning threat"}
+    ]
+  },
+  "deception": {
+    "vagueness": [
+      {"regex": "\\b(maybe|possibly|probably|perhaps)\\b", "severity": 0.3, "description": "Uncertainty markers"},
+      {"regex": "\\b(sort of|kind of|basically)\\b", "severity": 0.3, "description": "Approximation language"},
+      {"regex": "\\bi (think|believe|suppose)\\b", "severity": 0.3, "description": "Belief hedging"},
+      {"regex": "\\bas far as i (know|remember)\\b", "severity": 0.4, "description": "Knowledge limitation"}
+    ],
+    "distancing": [
+      {"regex": "\\bthat person\\b", "severity": 0.4, "description": "Third person reference"},
+      {"regex": "\\bthe (man|woman|person)\\b", "severity": 0.4, "description": "Impersonal reference"},
+      {"regex": "\\bone (might|would|could)\\b", "severity": 0.4, "description": "Hypothetical distancing"}
+    ],
+    "negation": [
+      {"regex": "\\bi (didn't|did not|don't|do not)\\b", "severity": 0.3, "description": "Simple negation"},
+      {"regex": "\\bnot my (fault|problem|responsibility)\\b", "severity": 0.5, "description": "Responsibility denial"},
+      {"regex": "\\bi (wouldn't|would not|couldn't|could not)\\b", "severity": 0.4, "description": "Capability denial"}
+    ],
+    "absolutes": [
+      {"regex": "\\b(always|never|every|none)\\b", "severity": 0.4, "description": "Absolute statements"},
+      {"regex": "\\b(completely|totally|absolutely)\\b", "severity": 0.4, "description": "Extreme modifiers"},
+      {"regex": "\\b100%\\b", "severity": 0.4, "description": "Percentage certainty"}
+    ]
+  },
+  "control": {
+    "commands": [
+      {"regex": "\\b(do|don't) (it|that|this)\\b", "severity": 0.4, "description": "Direct command"},
+      {"regex": "\\byou (will|must|have to|need to)\\b", "severity": 0.5, "description": "Obligation language"},
+      {"regex": "\\b(stop|start) (doing|saying)\\b", "severity": 0.5, "description": "Behavior control"},
+      {"regex": "\\bi (demand|insist|require)\\b", "severity": 0.6, "description": "Strong requirement"}
+    ],
+    "interrogation": [
+      {"regex": "\\bwhere (were|are|did) you\\b", "severity": 0.4, "description": "Location questioning"},
+      {"regex": "\\bwho (were|are) you with\\b", "severity": 0.5, "description": "Company questioning"},
+      {"regex": "\\bwhy (didn't|did) you\\b", "severity": 0.4, "description": "Action questioning"},
+      {"regex": "\\bwhat (were|are) you doing\\b", "severity": 0.4, "description": "Activity questioning"}
+    ],
+    "monitoring": [
+      {"regex": "\\bi (saw|noticed|watched)\\b", "severity": 0.5, "description": "Observation disclosure"},
+      {"regex": "\\bi (know|found out) (that|about)\\b", "severity": 0.6, "description": "Information gathering"},
+      {"regex": "\\b(show|send|give) me your\\b", "severity": 0.6, "description": "Privacy invasion"},
+      {"regex": "\\blet me (see|check|look)\\b", "severity": 0.5, "description": "Inspection demand"}
+    ]
+  }
+}

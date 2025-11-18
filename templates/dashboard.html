@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Message Processor{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h2>Dashboard</h2>
+        <p class="text-muted">Manage your analysis projects</p>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Projects</h5>
+                <a href="/upload" class="btn btn-primary btn-sm">
+                    <i class="fas fa-plus"></i> New Project
+                </a>
+            </div>
+            <div class="card-body">
+                <div id="projectsList">
+                    <p class="text-muted">Loading projects...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Cache Statistics</h5>
+            </div>
+            <div class="card-body">
+                <div id="cacheStats">
+                    <p class="text-muted">Loading cache stats...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Recent Analyses</h5>
+            </div>
+            <div class="card-body">
+                <div id="recentAnalyses">
+                    <p class="text-muted">No recent analyses</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    loadCacheStats();
+});
+
+function loadCacheStats() {
+    $.ajax({
+        url: '/api/cache/stats',
+        type: 'GET',
+        success: function(stats) {
+            if (stats.enabled) {
+                $('#cacheStats').html(`
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Status:</strong></td>
+                            <td><span class="badge bg-success">Enabled</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Used Memory:</strong></td>
+                            <td>${stats.used_memory || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Total Keys:</strong></td>
+                            <td>${stats.total_keys || 0}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Hit Rate:</strong></td>
+                            <td>${stats.hit_rate ? stats.hit_rate.toFixed(2) + '%' : 'N/A'}</td>
+                        </tr>
+                    </table>
+                `);
+            } else {
+                $('#cacheStats').html(`
+                    <p class="text-warning">
+                        <i class="fas fa-exclamation-triangle"></i> Cache is disabled
+                    </p>
+                `);
+            }
+        },
+        error: function() {
+            $('#cacheStats').html(`
+                <p class="text-danger">
+                    <i class="fas fa-times-circle"></i> Failed to load cache stats
+                </p>
+            `);
+        }
+    });
+}
+</script>
+{% endblock %}

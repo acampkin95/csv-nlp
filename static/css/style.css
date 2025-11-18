@@ -1,0 +1,149 @@
+/* Message Processor Custom Styles */
+
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #0dcaf0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+main {
+    min-height: calc(100vh - 200px);
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 2px solid #e9ecef;
+    font-weight: 600;
+}
+
+/* Upload page */
+#uploadProgress .progress {
+    height: 25px;
+}
+
+#uploadProgress .progress-bar {
+    font-size: 14px;
+    line-height: 25px;
+}
+
+/* Dashboard */
+.project-card {
+    cursor: pointer;
+}
+
+.project-card:hover {
+    border-color: var(--primary-color);
+}
+
+/* Analysis page */
+.nav-tabs .nav-link {
+    color: #6c757d;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Timeline */
+.timeline-item {
+    padding: 10px;
+    border-left: 3px solid var(--primary-color);
+    margin-bottom: 15px;
+    background-color: #fff;
+}
+
+.timeline-item:hover {
+    background-color: #f8f9fa;
+}
+
+/* Risk level badges */
+.risk-critical {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.risk-high {
+    background-color: var(--warning-color);
+    color: #000;
+}
+
+.risk-moderate {
+    background-color: var(--info-color);
+    color: #000;
+}
+
+.risk-low {
+    background-color: var(--success-color);
+    color: white;
+}
+
+/* Footer */
+footer {
+    margin-top: auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .navbar-brand {
+        font-size: 1.2rem;
+    }
+
+    .card {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Loading spinner */
+.spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid var(--primary-color);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Visualizations */
+.plotly-chart {
+    border-radius: 8px;
+    background-color: #fff;
+}
+
+/* Export buttons */
+.export-card {
+    transition: all 0.3s ease;
+}
+
+.export-card:hover {
+    transform: scale(1.05);
+}
