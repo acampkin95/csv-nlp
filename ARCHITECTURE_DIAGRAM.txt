@@ -1,0 +1,334 @@
+================================================================================
+CSV-NLP ARCHITECTURE DIAGRAM
+================================================================================
+
+HIGH-LEVEL SYSTEM ARCHITECTURE
+================================================================================
+
+                           ┌─────────────────────────────────────┐
+                           │      EXTERNAL SERVICES              │
+                           │                                     │
+                           │   PostgreSQL  Redis  (Optional)   │
+                           │   acdev.host  Cache Layer          │
+                           └─────────────┬───────────────────────┘
+                                         │
+                ┌────────────────────────┼────────────────────────┐
+                │                        │                        │
+        ┌───────▼──────────┐    ┌────────▼────────┐    ┌─────────▼─────────┐
+        │   webapp.py      │    │ message_proc    │    │   unified_api.py  │
+        │  (Flask App)     │    │ essor.py (CLI)  │    │   (API Blueprint) │
+        │                  │    │                 │    │                   │
+        │ ┌──────────────┐ │    │ ┌─────────────┐ │    │ ┌──────────────────┐
+        │ │ProjectMgr    │ │    │ │Enhanced     │ │    │ │PersonManager     │
+        │ │(Redis-only)  │ │    │ │Processor    │ │    │ │Interaction Track │
+        │ └──────────────┘ │    │ └──────┬──────┘ │    │ │RiskEngine        │
+        │                  │    │        │        │    │ └──────────────────┘
+        └──────────────────┘    └────────┼────────┘    └──────────────────────┘
+                                         │
+                ┌────────────────────────┴────────────────────────┐
+                │                                                 │
+        ┌───────▼──────────────────────────────────┐    ┌────────▼─────────┐
+        │      PROCESSING PIPELINE LAYER          │    │  SUPPORT LAYER   │
+        │                                          │    │                  │
+        │ ┌─────────────────────────────────────┐ │    │ ┌──────────────┐  │
+        │ │ UnifiedProcessor (15 passes)        │ │    │ │ConfigManager │  │
+        │ │                                     │ │    │ │              │  │
+        │ │ Pass 0-10: Standard Analysis        │ │    │ │ 4 Presets:  │  │
+        │ │ Pass 11-15: Person-Centric         │ │    │ │ - quick     │  │
+        │ └──────────┬──────────────────────────┘ │    │ │ - deep      │  │
+        │            │                             │    │ │ - clinical  │  │
+        │ ┌──────────▼──────────────────────────┐ │    │ │ - legal     │  │
+        │ │ MessageProcessor (10 passes)        │ │    │ └──────────────┘  │
+        │ │ Standard behavioral analysis        │ │    │                   │
+        │ └──────────┬──────────────────────────┘ │    │ ┌──────────────┐  │
+        │            │                             │    │ │CSVValidator  │  │
+        │            └─────────────┬───────────────┼────┤ │              │  │
+        │                          │               │    │ │ - Encoding  │  │
+        └──────────────────────────┼───────────────┘    │ │ - Columns   │  │
+                                   │                    │ │ - Dates     │  │
+                           ┌───────▼──────────┐        │ └──────────────┘  │
+                           │ NLP MODULES (7)  │        │                   │
+                           │                  │        │ ┌──────────────┐  │
+                           │ 1. Sentiment     │        │ │RedisCache    │  │
+                           │ 2. Grooming      │        │ │              │  │
+                           │ 3. Manipulation  │        │ │ TTLs: 30min- │  │
+                           │ 4. Deception     │        │ │ 24hrs        │  │
+                           │ 5. Intent        │        │ │              │  │
+                           │ 6. Person Analyzer        │ │ Silent       │  │
+                           │ 7. RiskScorer    │        │ │ fallback     │  │
+                           │                  │        │ └──────────────┘  │
+                           └──────────────────┘        │                   │
+                                                        └───────────────────┘
+
+
+DATA FLOW ARCHITECTURE
+================================================================================
+
+CSV Upload Flow:
+────────────────
+
+User CSV                CSVValidator              PostgreSQL
+   │                       │                          │
+   ├──────────────────────►│                          │
+   │   validate_file()     │                          │
+   │                       ├──────────────────────────►│ create_csv_import_session()
+   │                       │   create dedicated table  │
+   │                       │                          ├─ Calculate hash
+   │                       │                          ├─ Check for duplicates
+   │                       │                          ├─ Create new table
+   │                       │                          ├─ Populate messages
+   │                       │  Return session_id       │
+   │                       │◄──────────────────────────┤
+   │                       │                          │
+   │   Return validation   │                          │
+   │◄──────────────────────┤                          │
+   │                       │                          │
+   │                    RedisCache                    │
+   │                       │                          │
+   └──────────────────────►│ create_session()         │
+        store metadata     │                          │
+
+
+Analysis Processing Flow:
+─────────────────────────
+
+Message List
+    │
+    ├──────────────► SentimentAnalyzer ───► sentiment_results
+    │                (VADER, TextBlob,       (3 engines)
+    │                 NRCLex)
+    │
+    ├──────────────► GroomingDetector ──────► grooming_results
+    │                (6 pattern categories)
+    │
+    ├──────────────► ManipulationDetector ──► manipulation_results
+    │                (6 tactics)
+    │
+    ├──────────────► DeceptionAnalyzer ────► deception_results
+    │                (4 marker types)
+    │
+    ├──────────────► IntentClassifier ─────► intent_results
+    │                (5 intent categories)
+    │
+    └──────────────► BehavioralRiskScorer ─► RiskAssessment
+                    (combines all above)    ├─ Grooming risk
+                    Weighted (0.3/0.3/0.2   ├─ Manipulation risk
+                    /0.2)                   ├─ Deception risk
+                                            ├─ Hostility risk
+                                            ├─ Overall risk
+                                            ├─ Risk level
+                                            ├─ Primary concerns
+                                            └─ Recommendations
+                                                   │
+                                                   ├─ PostgreSQL
+                                                   │  (analysis_runs,
+                                                   │   patterns,
+                                                   │   risk_assessments)
+                                                   │
+                                                   └─ Redis
+                                                      (2hr cache)
+
+
+MODULE DEPENDENCY TREE
+================================================================================
+
+webapp.py
+├─ ProjectManager
+├─ PostgreSQLAdapter (+ DatabaseConfig)
+│  ├─ ThreadedConnectionPool
+│  ├─ CSV Import Session Management
+│  └─ Pattern Storage
+├─ RedisCache
+│  ├─ Pickle Serialization
+│  └─ TTL Management
+├─ CSVValidator
+│  ├─ chardet (encoding)
+│  └─ pandas (DataFrame)
+├─ ConfigManager
+│  └─ Configuration Hierarchy
+└─ EnhancedMessageProcessor
+   ├─ PostgreSQLAdapter
+   ├─ CSVValidator
+   ├─ SentimentAnalyzer
+   │  ├─ vaderSentiment
+   │  ├─ textblob
+   │  └─ nrclex
+   ├─ GroomingDetector
+   │  └─ patterns.json
+   ├─ ManipulationDetector
+   │  └─ patterns.json
+   ├─ DeceptionAnalyzer
+   │  └─ linguistic patterns
+   ├─ IntentClassifier
+   │  └─ intent patterns
+   └─ BehavioralRiskScorer
+      ├─ Component weights
+      └─ Risk thresholds
+
+
+message_processor.py (CLI)
+├─ UnifiedEnhancedMessageProcessor
+│  └─ UnifiedProcessor
+│     ├─ DatabaseAdapter (SQLite)
+│     ├─ CSVValidator
+│     ├─ SentimentAnalyzer
+│     ├─ GroomingDetector
+│     ├─ ManipulationDetector
+│     ├─ DeceptionAnalyzer
+│     ├─ IntentClassifier
+│     ├─ BehavioralRiskScorer
+│     └─ PersonAnalyzer (Passes 11-15)
+│        ├─ Person identification
+│        ├─ Interaction mapping
+│        ├─ Gaslighting detection
+│        ├─ Relationship analysis
+│        └─ Intervention recommendations
+│
+└─ EnhancedMessageProcessor
+   └─ MessageProcessor (10 passes)
+
+
+unified_api.py (API Blueprint)
+├─ PersonManager
+│  └─ Person CRUD operations
+├─ InteractionTracker
+│  └─ Interaction recording & retrieval
+├─ RelationshipAnalyzer
+│  └─ Timeline analysis
+└─ RiskEngine
+   └─ Risk assessment calculation
+
+
+CRITICAL COUPLING POINTS
+================================================================================
+
+1. BehavioralRiskScorer is Central Hub:
+   - Depends on: All 6 NLP analyzers
+   - Called by: Both processors
+   - Output goes to: Database + API
+
+2. MessageProcessor/UnifiedProcessor:
+   - Depend on: All 7 NLP modules
+   - Called by: webapp.py, message_processor.py CLI
+   - Output: ProcessingResult, UnifiedAnalysisResult
+
+3. PostgreSQLAdapter:
+   - Used by: webapp.py, EnhancedMessageProcessor
+   - Critical for: Data persistence
+   - Single point: Hardcoded credentials (SECURITY RISK)
+
+4. ConfigManager:
+   - Used by: webapp.py, message_processor.py CLI
+   - Presets loaded: quick_analysis, deep_analysis, clinical_report, legal_report
+   - No validation at load time (RISK)
+
+
+DATABASE SCHEMA (PostgreSQL)
+================================================================================
+
+message_processor Schema:
+├─ csv_import_sessions
+│  ├─ id (UUID)
+│  ├─ filename
+│  ├─ file_hash
+│  ├─ table_name
+│  ├─ row_count
+│  └─ column_mapping (JSONB)
+│
+├─ analysis_runs
+│  ├─ id
+│  ├─ csv_session_id
+│  ├─ run_timestamp
+│  ├─ status
+│  ├─ config (JSONB)
+│  ├─ duration_seconds
+│  ├─ results (JSONB)
+│  └─ error_message
+│
+├─ patterns
+│  ├─ id
+│  ├─ analysis_run_id
+│  ├─ message_id
+│  ├─ pattern_type
+│  ├─ severity
+│  ├─ confidence
+│  └─ matched_text
+│
+├─ risk_assessments
+│  ├─ analysis_run_id
+│  ├─ overall_risk
+│  ├─ primary_concern
+│  ├─ recommendations
+│  └─ created_at
+│
+└─ Dynamic CSV Tables (per session):
+   ├─ csv_YYYYMMDD_HHMMSS_XXXXXXXX
+   │  ├─ id
+   │  ├─ import_session_id
+   │  └─ ... (dynamic columns from CSV)
+
+
+PERFORMANCE BOTTLENECKS
+================================================================================
+
+1. Sequential Processing:
+   Message → Sent Analysis → Grooming → Manipulation → ... (serial, not parallel)
+   Estimated: 50-100 msgs/sec on 4-core CPU
+
+2. NLP Model Loading:
+   Each request loads models fresh (VADER, TextBlob, NRCLex, etc.)
+   Estimated: 2-5 seconds startup per request
+
+3. PostgreSQL Connection Pool:
+   Limited to 2-10 connections
+   Under load: Request queuing
+
+4. DataFrame in Memory:
+   Entire CSV loaded to pandas DataFrame
+   For 1M messages: ~1-2 GB RAM
+
+5. No Caching Strategy:
+   Features computed fresh each time (unless Redis cache hit)
+   Cache hit rate unknown for unique conversations
+
+
+SECURITY CONCERNS
+================================================================================
+
+CRITICAL:
+  ✗ Hardcoded credentials in source code (webapp.py, message_processor.py)
+  ✗ No authentication on API endpoints
+  ✗ No CSRF protection on Flask app
+
+HIGH:
+  ✗ No rate limiting on endpoints
+  ✗ No input size limits
+  ✗ SQL injection risk (mitigated by parameterized queries)
+
+MEDIUM:
+  ✗ No authorization/RBAC
+  ✗ No audit logging
+  ✗ No sensitive data masking in logs
+
+
+DEPLOYMENT OPTIONS
+================================================================================
+
+Option 1: Docker (Recommended)
+  docker-compose up -d
+  ├─ Flask app on port 5000
+  ├─ PostgreSQL on 5432 (optional)
+  └─ Redis on 6379 (optional)
+
+Option 2: Manual Linux/macOS
+  pip install -r requirements.txt
+  export POSTGRES_HOST=acdev.host
+  python webapp.py  # Web
+  python message_processor.py file.csv  # CLI
+
+Option 3: CLI Only (SQLite)
+  python message_processor.py file.csv --use-sqlite
+  └─ Creates local data/analysis.db
+
+
+================================================================================

@@ -1,0 +1,324 @@
+================================================================================
+CSV-NLP MESSAGE PROCESSOR - ARCHITECTURE SUMMARY
+================================================================================
+
+PROJECT OVERVIEW
+================================================================================
+Type:              Behavioral/Psychological Analysis System
+Language:          Python 3.11+
+Lines of Code:     ~14,500
+Classes:           52
+Modules:           19
+Test Coverage:     Unknown (no tests found)
+
+CORE PURPOSE
+================================================================================
+Analyzes chat conversations to detect:
+  - Grooming behaviors
+  - Manipulation tactics
+  - Deception markers
+  - Gaslighting patterns
+  - Communication intent
+  - Behavioral risk profiles
+  - Relationship dynamics
+
+PIPELINE ARCHITECTURE
+================================================================================
+
+10-PASS PIPELINE (Standard)
+---------------------------
+Pass 0:  CSV Validation & Loading
+Pass 1:  Sentiment Analysis (VADER, TextBlob, NRCLex)
+Pass 2:  Grooming Pattern Detection
+Pass 3:  Manipulation Detection
+Pass 4:  Deception Analysis
+Pass 5:  Intent Classification
+Pass 6:  Behavioral Risk Assessment
+Pass 7:  Timeline Reconstruction
+Pass 8:  Contextual Insights
+Pass 9:  Report Generation
+
+15-PASS PIPELINE (Unified - NEW)
+--------------------------------
+Passes 0-10: All of the above
+Pass 11:     Person Identification & Role Classification
+Pass 12:     Interaction Mapping & Relationship Structure
+Pass 13:     Gaslighting-Specific Detection
+Pass 14:     Relationship Dynamics & Power Analysis
+Pass 15:     Intervention Recommendations & Case Formulation
+
+ENTRY POINTS
+================================================================================
+
+1. webapp.py (Flask Web Application)
+   - REST API for CSV upload/analysis
+   - Web UI for visualization
+   - Project management
+   - Person profiles and interaction tracking
+   - Uses: PostgreSQL, Redis, Configuration
+
+2. message_processor.py (CLI)
+   - Command-line analysis interface
+   - Supports 10-pass and 15-pass modes
+   - Supports PostgreSQL and SQLite backends
+   - Batch processing capability
+
+DATA STORAGE
+================================================================================
+
+PostgreSQL (Production)
+- Host: acdev.host (Configured)
+- Database: messagestore
+- Schema: message_processor
+- Tables: csv_import_sessions, analysis_runs, patterns, risk_assessments
+- Features: Connection pooling (2-10 connections), JSONB optimization
+
+SQLite (Development)
+- File-based: data/analysis.db
+- Schema auto-creation
+- Suitable for local testing
+
+Redis (Caching)
+- Cache TTL: 30min - 24hours depending on data type
+- Key prefix: msgproc:{prefix}:{identifier}
+- Silent fallback if unavailable
+
+NLP MODULES (7 Total)
+================================================================================
+
+1. SentimentAnalyzer (431 lines)
+   Input:  List[Dict] messages
+   Output: SentimentResult, ConversationSentiment
+   Engines: VADER, TextBlob, NRCLex
+
+2. GroomingDetector (599 lines)
+   Input:  List[Dict] messages
+   Output: GroomingPattern results
+   Pattern Categories: 6
+   
+3. ManipulationDetector (520 lines)
+   Input:  List[Dict] messages
+   Output: ManipulationPattern results
+   Tactics: Gaslighting, blame shifting, love bombing, coercion
+
+4. DeceptionAnalyzer (630 lines)
+   Input:  List[Dict] messages
+   Output: DeceptionMarker results
+   Markers: Vagueness, distancing, negation, absolutes
+
+5. IntentClassifier (574 lines)
+   Input:  List[Dict] messages
+   Output: IntentClassification results
+   Categories: Neutral, supportive, conflictive, coercive, controlling
+
+6. PersonAnalyzer (829 lines)
+   Input:  List[Dict] messages, DataFrame
+   Output: Person identification, interactions, gaslighting detection
+   Passes: 11-15 of unified pipeline
+
+7. BehavioralRiskScorer (756 lines)
+   Input:  All NLP results
+   Output: RiskAssessment with weighted scores
+   Weights: Grooming(0.3), Manipulation(0.3), Hostility(0.2), Deception(0.2)
+
+PIPELINE PROCESSORS
+================================================================================
+
+MessageProcessor (10-pass, 730 lines)
+- Orchestrates passes 0-9
+- Outputs: ProcessingResult dataclass
+- Storage: SQLite or PostgreSQL
+
+UnifiedProcessor (15-pass, 784 lines)
+- Orchestrates passes 0-15
+- Outputs: UnifiedAnalysisResult dataclass
+- Additional: Person-centric analysis
+
+KEY INTERFACES
+================================================================================
+
+Database Adapters:
+  - PostgreSQLAdapter (731 lines) - Production-grade with pooling
+  - DatabaseAdapter/SQLite (590 lines) - Local development
+
+CSV Validator (611 lines)
+  - Auto-detects encoding
+  - Flexible column mapping
+  - Date format parsing
+  - Auto-correction for common issues
+
+Configuration Manager (457 lines)
+  - Hierarchical dataclass-based config
+  - Presets: quick_analysis, deep_analysis, clinical_report, legal_report
+  - Runtime override support
+
+Redis Cache (902 lines)
+  - Automatic serialization/deserialization
+  - TTL management
+  - Session storage
+
+Unified API (973 lines)
+  - Person CRUD operations
+  - Interaction tracking
+  - Risk assessment endpoints
+  - Relationship timeline analysis
+
+CRITICAL ARCHITECTURAL ISSUES
+================================================================================
+
+1. SECURITY RISK: Hardcoded database credentials in source code
+   Location: webapp.py:57-60, message_processor.py:51-54
+   Impact: Credentials exposed in version control, containers, logs
+   Fix: Use environment variables
+
+2. PERFORMANCE: Synchronous processing only
+   Impact: Long analyses block web requests, no background jobs
+   Fix: Implement async processing with Celery
+
+3. RELIABILITY: No error recovery or graceful degradation
+   Impact: Single module failure crashes entire analysis
+   Fix: Wrap imports in try/except, implement fallbacks
+
+4. VALIDATION: No data validation between passes
+   Impact: Invalid intermediate data not caught
+   Fix: Add schema validation after each pass
+
+5. DATA PERSISTENCE: Project management not persisted
+   Impact: Projects lost after Redis cache expiration
+   Fix: Persist to database
+
+MODERATE ARCHITECTURAL ISSUES
+================================================================================
+
+6. Tight coupling between modules (hard to test independently)
+7. No database transactions (data integrity issues on failure)
+8. Configuration not validated at load time (runtime errors)
+9. Logging inconsistency (mix of logger and print statements)
+10. No provenance tracking (can't reproduce analyses)
+11. No rate limiting on web endpoints (DoS vulnerability)
+12. Pattern definitions scattered across code and JSON
+13. No schema migration system
+14. Inconsistent result export formats
+15. No streaming CSV support (loads entire file to memory)
+
+CODE QUALITY METRICS
+================================================================================
+
+Strengths:
+  + Clear separation of concerns
+  + Consistent use of dataclasses for type safety
+  + Comprehensive NLP module set
+  + Flexible database support
+  + Configurable via presets
+  + Good code organization by feature
+
+Weaknesses:
+  - No test suite found
+  - Hardcoded credentials
+  - Limited error handling
+  - Synchronous-only processing
+  - No logging configuration
+  - Inconsistent code style (print vs logger)
+
+DEPENDENCY GRAPH SUMMARY
+================================================================================
+
+Entry Points:
+  webapp.py → ProjectManager → PostgreSQLAdapter, RedisCache, EnhancedMessageProcessor
+  message_processor.py → UnifiedEnhancedMessageProcessor → UnifiedProcessor → All NLP modules
+
+Central Hub (BehavioralRiskScorer):
+  Depends on: All 6 other NLP modules
+  Provides: Final risk_assessment to database
+
+Most Isolated:
+  Individual NLP analyzers (can be called independently)
+  Configuration manager (stateless, reusable)
+  CSV validator (standalone utility)
+
+EXTERNAL DEPENDENCIES (20+)
+================================================================================
+
+Core:        pandas, numpy, psycopg2, redis
+NLP:         vaderSentiment, textblob, nrclex, nltk, spacy, gensim, scikit-learn, chardet
+Web:         Flask, plotly, matplotlib, seaborn
+PDF:         reportlab, fpdf, svglib
+
+DEPLOYMENT
+================================================================================
+
+Docker Support: Yes (docker-compose.yml provided)
+Environment Config: Yes (uses os.environ)
+Schema Migration: Manual (no migration framework)
+Testing: None found
+CI/CD: No configuration provided
+
+RECOMMENDATIONS (Priority)
+================================================================================
+
+IMMEDIATE:
+  1. Move hardcoded credentials to environment variables
+  2. Add try/except for module imports with graceful fallback
+  3. Input validation for API endpoints
+
+SHORT-TERM (Month 1):
+  4. Implement async processing (Celery)
+  5. Add error messages with troubleshooting
+  6. Create test suite (70%+ coverage)
+  7. Database transactions
+
+MEDIUM-TERM (Quarter 1):
+  8. Schema migration system (Alembic)
+  9. Authentication and authorization
+  10. Streaming CSV processing
+  11. Unified export formatter
+  12. CSRF protection
+
+LONG-TERM (Year 1):
+  13. Distributed processing
+  14. GPU support for NLP
+  15. Monitoring and alerting
+  16. Cache strategy review
+  17. Logging standardization
+
+PERFORMANCE METRICS
+================================================================================
+
+Estimated Throughput:
+  - 50-100 messages/second (single core)
+  - ~10,000 messages in <60 seconds
+  - 88% faster with Redis caching
+
+Scalability:
+  - Connection pool: 2-10 PostgreSQL connections
+  - No parallelization implemented
+  - No message batching
+
+Memory Usage:
+  - Loads entire CSV into DataFrame
+  - NLP models loaded per request
+  - Redis caching for 1-24 hours
+
+SUMMARY
+================================================================================
+
+The CSV-NLP Message Processor is a well-architected behavioral analysis system
+with comprehensive NLP capabilities. The 15-pass unified pipeline provides
+sophisticated person-centric analysis for relationship dynamics.
+
+Main Strengths:
+  - Clear, modular architecture
+  - Comprehensive NLP analysis
+  - Flexible deployment (PostgreSQL/SQLite)
+  - Good code organization
+
+Main Weaknesses:
+  - Security: Hardcoded credentials
+  - Performance: Synchronous only
+  - Reliability: No error recovery
+  - Testing: No test suite
+
+Assessment: Production-ready with improvements needed for security,
+performance, and reliability.
+
+================================================================================
