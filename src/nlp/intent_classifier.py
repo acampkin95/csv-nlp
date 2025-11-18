@@ -9,6 +9,9 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import logging
 
+# Import model cache for pattern caching
+from .model_cache import get_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,8 +166,13 @@ class IntentClassifier:
     }
 
     def __init__(self):
-        """Initialize intent classifier"""
-        self.compiled_patterns = self._compile_patterns()
+        """Initialize intent classifier with cached patterns"""
+        cache = get_cache()
+        # Cache compiled patterns for faster initialization
+        self.compiled_patterns = cache.get_or_load(
+            'intent_compiled_patterns',
+            self._compile_patterns
+        )
 
     def _compile_patterns(self) -> Dict[str, Dict]:
         """Compile regex patterns for efficiency"""

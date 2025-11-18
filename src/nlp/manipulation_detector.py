@@ -11,6 +11,9 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 import logging
 
+# Import model cache for pattern caching
+from .model_cache import get_cache, load_patterns_file, compile_regex_patterns
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,13 +74,35 @@ class ManipulationDetector:
     ]
 
     def __init__(self, patterns_file: Optional[str] = None):
-        """Initialize manipulation detector
+        """Initialize manipulation detector with cached patterns
 
         Args:
             patterns_file: Path to patterns JSON file
         """
-        self.patterns = self._load_patterns(patterns_file)
-        self.compiled_patterns = self._compile_patterns()
+        cache = get_cache()
+
+        # Use file path as part of cache key
+        cache_key = f"manipulation_patterns_{patterns_file or 'default'}"
+
+        # Load patterns from cache (or file if not cached)
+        self.patterns = cache.get_or_load(
+            cache_key,
+            load_patterns_file,
+            patterns_file,
+            'manipulation'
+        )
+
+        # If patterns are empty, use defaults
+        if not self.patterns:
+            self.patterns = self._get_default_patterns()
+
+        # Compile and cache patterns
+        compiled_cache_key = f"manipulation_compiled_{patterns_file or 'default'}"
+        self.compiled_patterns = cache.get_or_load(
+            compiled_cache_key,
+            compile_regex_patterns,
+            self.patterns
+        )
 
     def _load_patterns(self, patterns_file: Optional[str] = None) -> Dict:
         """Load manipulation patterns from JSON file"""
