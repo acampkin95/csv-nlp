@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 import statistics
 from datetime import datetime
 
+# Import confidence scoring
+from .confidence_scorer import ConfidenceScorer, get_confidence_level
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,6 +101,7 @@ class BehavioralRiskScorer:
             weights: Custom risk component weights
         """
         self.weights = weights or self.DEFAULT_WEIGHTS
+        self.confidence_scorer = ConfidenceScorer()
         self._validate_weights()
 
     def _validate_weights(self):
@@ -430,7 +434,7 @@ class BehavioralRiskScorer:
         return min(1.0, risk)
 
     def _calculate_confidence(self, assessment: RiskAssessment) -> float:
-        """Calculate confidence in assessment
+        """Calculate confidence in assessment using ensemble confidence scoring
 
         Args:
             assessment: Risk assessment
@@ -438,26 +442,30 @@ class BehavioralRiskScorer:
         Returns:
             float: Confidence (0-1)
         """
-        # Start with base confidence
-        confidence = 0.5
+        # Build detection dictionary for ensemble confidence
+        detections = {}
 
-        # More data points increase confidence
-        data_points = sum([
-            1 for risk in [
-                assessment.grooming_risk,
-                assessment.manipulation_risk,
-                assessment.deception_risk,
-                assessment.hostility_risk
-            ] if risk > 0
-        ])
+        if assessment.grooming_risk > 0:
+            detections['grooming'] = assessment.grooming_risk
+        if assessment.manipulation_risk > 0:
+            detections['manipulation'] = assessment.manipulation_risk
+        if assessment.deception_risk > 0:
+            detections['deception'] = assessment.deception_risk
+        if assessment.hostility_risk > 0:
+            detections['hostility'] = assessment.hostility_risk
 
-        confidence += data_points * 0.1
+        if not detections:
+            return 0.0
 
-        # Clear patterns increase confidence
-        if assessment.primary_concern and assessment.overall_risk > 0.5:
-            confidence += 0.2
+        # Use ensemble confidence scoring
+        confidence_score = self.confidence_scorer.calculate_ensemble_confidence(detections)
 
-        return min(1.0, confidence)
+        # Calculate data completeness (how many risk components were analyzed)
+        total_components = 4  # grooming, manipulation, deception, hostility
+        analyzed_components = len(detections)
+        assessment.data_completeness = analyzed_components / total_components
+
+        return confidence_score.overall_confidence
 
     def _determine_intervention_priority(self, assessment: RiskAssessment) -> str:
         """Determine intervention priority

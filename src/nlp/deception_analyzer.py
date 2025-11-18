@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 import logging
 from collections import Counter
 
+# Import model cache for pattern caching
+from .model_cache import get_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,8 +99,13 @@ class DeceptionAnalyzer:
     ]
 
     def __init__(self):
-        """Initialize deception analyzer"""
-        self.compiled_patterns = self._compile_patterns()
+        """Initialize deception analyzer with cached patterns"""
+        cache = get_cache()
+        # Cache compiled patterns for faster initialization
+        self.compiled_patterns = cache.get_or_load(
+            'deception_compiled_patterns',
+            self._compile_patterns
+        )
 
     def _compile_patterns(self) -> Dict[str, List]:
         """Compile all regex patterns"""
