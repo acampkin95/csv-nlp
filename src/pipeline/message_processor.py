@@ -33,6 +33,7 @@ from nlp.deception_analyzer import DeceptionAnalyzer
 from nlp.intent_classifier import IntentClassifier
 from nlp.risk_scorer import BehavioralRiskScorer
 from nlp.temporal_analyzer import TemporalAnalyzer
+from nlp.confidence_scorer import ConfidenceScorer, ContextAwareAnalyzer, get_confidence_level
 from cache.analysis_cache import AnalysisResultCache, create_analysis_cache
 
 # Configure logging
@@ -114,6 +115,11 @@ class MessageProcessor:
 
         # Initialize temporal analyzer
         self.temporal_analyzer = TemporalAnalyzer(window_size_hours=24)
+
+        # Initialize accuracy improvement features
+        self.confidence_scorer = ConfidenceScorer()
+        self.context_analyzer = ContextAwareAnalyzer()
+        logger.info("✅ Accuracy improvements enabled (confidence scoring, context-aware analysis, speaker profiling)")
 
         # Initialize analysis result cache
         if enable_cache:
@@ -238,16 +244,24 @@ class MessageProcessor:
                 }
             )
 
-            # Pass 7: Temporal Analysis (with timestamp validation)
-            logger.info("Pass 7: Temporal pattern analysis")
+            # Pass 7: Speaker Baseline Profiling (for anomaly detection)
+            logger.info("Pass 7: Building speaker baselines")
+            self._build_speaker_baselines(messages, sentiment_results, risk_assessment)
+
+            # Pass 8: Temporal Analysis (with timestamp validation)
+            logger.info("Pass 8: Temporal pattern analysis")
             temporal_results = self._perform_temporal_analysis(messages, risk_assessment)
 
-            # Pass 8: Pattern Storage
-            logger.info("Pass 8: Pattern storage and indexing")
+            # Pass 9: Confidence Scoring & Anomaly Detection
+            logger.info("Pass 9: Calculating confidence scores and detecting anomalies")
+            confidence_results = self._calculate_confidence_scores(messages, risk_assessment)
+
+            # Pass 10: Pattern Storage
+            logger.info("Pass 10: Pattern storage and indexing")
             self._store_patterns(run_id, messages, risk_assessment)
 
-            # Pass 9: Generate Insights
-            logger.info("Pass 9: Generating insights and recommendations")
+            # Pass 11: Generate Insights
+            logger.info("Pass 11: Generating insights and recommendations")
             insights = self._generate_insights(
                 sentiment_results,
                 grooming_results,
@@ -255,11 +269,12 @@ class MessageProcessor:
                 deception_results,
                 intent_results,
                 risk_assessment,
-                temporal_results
+                temporal_results,
+                confidence_results
             )
 
-            # Pass 10: Export Results
-            logger.info("Pass 10: Exporting results")
+            # Pass 12: Export Results
+            logger.info("Pass 12: Exporting results")
             export_paths = self._export_results(
                 run_id,
                 {
@@ -479,6 +494,127 @@ class MessageProcessor:
 
         return temporal_results
 
+    def _build_speaker_baselines(self, messages: List[Dict],
+                                 sentiment_results: Dict, risk_assessment: Dict):
+        """Build baseline behavioral profiles for each speaker
+
+        Args:
+            messages: List of messages
+            sentiment_results: Sentiment analysis results
+            risk_assessment: Risk assessment results
+        """
+        logger.debug("Building speaker baselines for anomaly detection...")
+
+        # Group messages by speaker
+        speaker_messages = defaultdict(list)
+
+        for i, msg in enumerate(messages):
+            sender = msg.get('sender', 'Unknown')
+
+            # Enrich message with analysis results
+            enriched_msg = msg.copy()
+
+            # Add sentiment
+            if i < len(sentiment_results.get('per_message', [])):
+                enriched_msg['sentiment'] = getattr(
+                    sentiment_results['per_message'][i],
+                    'combined_sentiment',
+                    0
+                )
+
+            # Add risk score
+            if i < len(risk_assessment.get('per_message_risks', [])):
+                enriched_msg['risk_score'] = getattr(
+                    risk_assessment['per_message_risks'][i],
+                    'overall_risk',
+                    0
+                )
+
+            speaker_messages[sender].append(enriched_msg)
+
+        # Build baseline for each speaker
+        for speaker, speaker_msgs in speaker_messages.items():
+            if len(speaker_msgs) >= 3:  # Need at least 3 messages for baseline
+                baseline = self.confidence_scorer.build_speaker_baseline(speaker, speaker_msgs)
+                logger.debug(f"Built baseline for {speaker}: {len(speaker_msgs)} messages, "
+                           f"avg risk: {baseline.typical_risk_level:.2f}")
+
+    def _calculate_confidence_scores(self, messages: List[Dict],
+                                    risk_assessment: Dict) -> Dict[str, Any]:
+        """Calculate confidence scores and detect anomalies
+
+        Args:
+            messages: List of messages
+            risk_assessment: Risk assessment results
+
+        Returns:
+            Dict: Confidence scores and anomaly detections
+        """
+        confidence_results = {
+            'per_message_confidence': [],
+            'anomalies_detected': [],
+            'overall_confidence': 0.0
+        }
+
+        confidences = []
+        anomalies = []
+
+        for i, msg in enumerate(messages):
+            sender = msg.get('sender', 'Unknown')
+
+            # Get risk score for this message
+            risk_score = 0.0
+            if i < len(risk_assessment.get('per_message_risks', [])):
+                risk_score = getattr(
+                    risk_assessment['per_message_risks'][i],
+                    'overall_risk',
+                    0
+                )
+
+            # Calculate confidence
+            confidence_score = self.confidence_scorer.calculate_detection_confidence(
+                detection_value=risk_score,
+                method_name='risk_assessment'
+            )
+
+            # Check for baseline deviation (anomaly detection)
+            is_anomaly, deviation, description = self.confidence_scorer.detect_baseline_deviation(
+                sender,
+                risk_score,
+                'risk'
+            )
+
+            if is_anomaly:
+                anomalies.append({
+                    'message_index': i,
+                    'sender': sender,
+                    'deviation': deviation,
+                    'description': description,
+                    'risk_score': risk_score
+                })
+                logger.warning(f"⚠️  Anomaly detected: {sender} - {description}")
+
+            confidence_results['per_message_confidence'].append({
+                'index': i,
+                'confidence': confidence_score.overall_confidence,
+                'level': get_confidence_level(confidence_score.overall_confidence),
+                'is_anomaly': is_anomaly
+            })
+
+            confidences.append(confidence_score.overall_confidence)
+
+        # Calculate overall confidence
+        if confidences:
+            confidence_results['overall_confidence'] = statistics.mean(confidences)
+
+        confidence_results['anomalies_detected'] = anomalies
+        confidence_results['anomaly_count'] = len(anomalies)
+
+        if anomalies:
+            logger.info(f"Detected {len(anomalies)} anomalies in speaker behavior")
+
+        return confidence_results
+
     def _dataframe_to_messages(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Convert dataframe to message list
 
@@ -658,11 +794,12 @@ class MessageProcessor:
             logger.info(f"Stored {len(patterns)} patterns in database")
 
     def _generate_insights(self, sentiment: Dict, grooming: Dict, manipulation: Dict,
-                          deception: Dict, intent: Dict, risk: Dict, temporal: Dict = None) -> Dict[str, Any]:
+                          deception: Dict, intent: Dict, risk: Dict, temporal: Dict = None,
+                          confidence: Dict = None) -> Dict[str, Any]:
         """Generate key insights and recommendations
 
         Args:
-            Various analysis results including temporal
+            Various analysis results including temporal and confidence
 
         Returns:
             Dict: Insights and recommendations
@@ -730,6 +867,29 @@ class MessageProcessor:
             # Add temporal warnings
             if temp_analysis.get('warnings'):
                 insights['recommendations'].extend(temp_analysis['warnings'][:3])
+
+        # Key findings from confidence & anomaly detection
+        if confidence:
+            overall_conf = confidence.get('overall_confidence', 0)
+            conf_level = get_confidence_level(overall_conf)
+
+            insights['key_findings'].append(
+                f"Overall detection confidence: {conf_level} ({overall_conf:.0%})"
+            )
+
+            # Report anomalies
+            anomalies = confidence.get('anomalies_detected', [])
+            if anomalies:
+                insights['key_findings'].append(
+                    f"⚠️  {len(anomalies)} behavioral anomaly(ies) detected"
+                )
+                insights['primary_concerns'].append("Anomalous behavior detected")
+
+                # Add top anomalies
+                for anomaly in anomalies[:3]:  # Top 3
+                    insights['recommendations'].append(
+                        f"Investigate {anomaly['sender']}: {anomaly['description']}"
+                    )
 
         # Compile recommendations
         all_recommendations = set()
