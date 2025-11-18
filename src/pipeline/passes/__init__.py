@@ -9,6 +9,15 @@ Pass Groups:
 - communication_passes: Passes 7-8 (Intent classification, risk assessment)
 - timeline_passes: Passes 9-10 (Timeline analysis, contextual insights)
 - person_passes: Passes 11-15 (Person-centric analysis and interventions)
+
+Advanced Features:
+- Pass Factory: Easy pass instantiation and registry creation
+- Metrics System: Comprehensive execution metrics and statistics
+- Hooks System: Before/after execution hooks with conditional execution
+- Profiler: Detailed performance profiling (CPU, memory, I/O)
+- Configuration: Flexible pass configuration with presets
+- Visualizer: Execution timelines, graphs, and HTML reports
+- Comparator: Result comparison and regression testing
 """
 
 from .base_pass import BasePass, PassResult, PassGroup
@@ -39,6 +48,41 @@ from .person_passes import (
     Pass13_GaslightingDetection,
     Pass14_RelationshipAnalysis,
     Pass15_InterventionRecommendations
+)
+
+# Import advanced features
+from .pass_factory import PassFactory
+from .pass_metrics import (
+    PassMetricsCollector,
+    PassExecutionMetrics,
+    PipelineMetrics,
+    get_metrics_collector
+)
+from .pass_hooks import (
+    PassHookManager,
+    HookType,
+    HookContext,
+    ConditionalExecutionManager,
+    get_hook_manager
+)
+from .pass_profiler import (
+    PassProfiler,
+    ProfileData,
+    get_profiler
+)
+from .pass_config import (
+    PassConfig,
+    PipelineConfig,
+    PassConfigManager,
+    get_config_manager
+)
+from .pass_visualizer import (
+    PassVisualizer,
+    get_visualizer
+)
+from .pass_comparator import (
+    PassResultComparator,
+    get_comparator
 )
 
 __all__ = [
@@ -73,4 +117,27 @@ __all__ = [
     'Pass13_GaslightingDetection',
     'Pass14_RelationshipAnalysis',
     'Pass15_InterventionRecommendations',
+
+    # Advanced features
+    'PassFactory',
+    'PassMetricsCollector',
+    'PassExecutionMetrics',
+    'PipelineMetrics',
+    'get_metrics_collector',
+    'PassHookManager',
+    'HookType',
+    'HookContext',
+    'ConditionalExecutionManager',
+    'get_hook_manager',
+    'PassProfiler',
+    'ProfileData',
+    'get_profiler',
+    'PassConfig',
+    'PipelineConfig',
+    'PassConfigManager',
+    'get_config_manager',
+    'PassVisualizer',
+    'get_visualizer',
+    'PassResultComparator',
+    'get_comparator',
 ]
