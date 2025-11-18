@@ -25,6 +25,10 @@ class RedisCache:
     FEATURE_EXTRACTION_TTL = 86400  # 24 hours
     ANALYSIS_RESULTS_TTL = 7200  # 2 hours
     SESSION_TTL = 86400  # 24 hours
+    PERSON_PROFILE_TTL = 3600  # 1 hour for person profiles
+    INTERACTION_TTL = 7200  # 2 hours for interactions
+    RELATIONSHIP_TIMELINE_TTL = 1800  # 30 minutes for relationship timelines
+    RISK_ASSESSMENT_TTL = 3600  # 1 hour for risk assessments
 
     def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0,
                  password: Optional[str] = None, decode_responses: bool = False):
@@ -387,6 +391,340 @@ class RedisCache:
             return True
         except Exception as e:
             logger.error(f"Failed to delete session: {e}")
+            return False
+
+    # ==========================================
+    # Person Profile Caching
+    # ==========================================
+
+    def cache_person_profile(self, person_id: str, profile_data: Dict, ttl: Optional[int] = None) -> bool:
+        """Cache person profile data
+
+        Args:
+            person_id: Person ID
+            profile_data: Person profile dictionary
+            ttl: Time to live in seconds
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('person', person_id)
+            data = self._serialize(profile_data)
+            ttl = ttl or self.PERSON_PROFILE_TTL
+
+            self.client.setex(key, ttl, data)
+            logger.debug(f"Cached person profile: {person_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to cache person profile: {e}")
+            return False
+
+    def get_cached_person_profile(self, person_id: str) -> Optional[Dict]:
+        """Get cached person profile
+
+        Args:
+            person_id: Person ID
+
+        Returns:
+            Optional[Dict]: Cached profile or None
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            key = self._make_key('person', person_id)
+            data = self.client.get(key)
+
+            if data:
+                return self._deserialize(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get cached person profile: {e}")
+            return None
+
+    def invalidate_person_profile(self, person_id: str) -> bool:
+        """Invalidate cached person profile
+
+        Args:
+            person_id: Person ID
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('person', person_id)
+            self.client.delete(key)
+            logger.debug(f"Invalidated person profile cache: {person_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to invalidate person profile cache: {e}")
+            return False
+
+    # ==========================================
+    # Interaction Caching
+    # ==========================================
+
+    def cache_interaction(self, interaction_id: str, interaction_data: Dict, ttl: Optional[int] = None) -> bool:
+        """Cache interaction data
+
+        Args:
+            interaction_id: Interaction ID
+            interaction_data: Interaction dictionary
+            ttl: Time to live in seconds
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('interaction', interaction_id)
+            data = self._serialize(interaction_data)
+            ttl = ttl or self.INTERACTION_TTL
+
+            self.client.setex(key, ttl, data)
+            logger.debug(f"Cached interaction: {interaction_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to cache interaction: {e}")
+            return False
+
+    def get_cached_interaction(self, interaction_id: str) -> Optional[Dict]:
+        """Get cached interaction
+
+        Args:
+            interaction_id: Interaction ID
+
+        Returns:
+            Optional[Dict]: Cached interaction or None
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            key = self._make_key('interaction', interaction_id)
+            data = self.client.get(key)
+
+            if data:
+                return self._deserialize(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get cached interaction: {e}")
+            return None
+
+    def cache_person_interactions(self, person_id: str, interactions: List[Dict], ttl: Optional[int] = None) -> bool:
+        """Cache all interactions for a person
+
+        Args:
+            person_id: Person ID
+            interactions: List of interaction dictionaries
+            ttl: Time to live in seconds
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('person_interactions', person_id)
+            data = self._serialize(interactions)
+            ttl = ttl or self.INTERACTION_TTL
+
+            self.client.setex(key, ttl, data)
+            logger.debug(f"Cached {len(interactions)} interactions for person: {person_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to cache person interactions: {e}")
+            return False
+
+    def get_cached_person_interactions(self, person_id: str) -> Optional[List[Dict]]:
+        """Get cached interactions for a person
+
+        Args:
+            person_id: Person ID
+
+        Returns:
+            Optional[List[Dict]]: Cached interactions or None
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            key = self._make_key('person_interactions', person_id)
+            data = self.client.get(key)
+
+            if data:
+                return self._deserialize(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get cached person interactions: {e}")
+            return None
+
+    # ==========================================
+    # Relationship Timeline Caching
+    # ==========================================
+
+    def cache_relationship_timeline(self, person1_id: str, person2_id: str, timeline_data: Dict,
+                                    ttl: Optional[int] = None) -> bool:
+        """Cache relationship timeline between two persons
+
+        Args:
+            person1_id: First person ID
+            person2_id: Second person ID
+            timeline_data: Timeline dictionary
+            ttl: Time to live in seconds
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            # Create consistent key regardless of person order
+            sorted_ids = tuple(sorted([person1_id, person2_id]))
+            key = self._make_key(f'timeline', f"{sorted_ids[0]}:{sorted_ids[1]}")
+            data = self._serialize(timeline_data)
+            ttl = ttl or self.RELATIONSHIP_TIMELINE_TTL
+
+            self.client.setex(key, ttl, data)
+            logger.debug(f"Cached timeline for persons: {person1_id}, {person2_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to cache relationship timeline: {e}")
+            return False
+
+    def get_cached_relationship_timeline(self, person1_id: str, person2_id: str) -> Optional[Dict]:
+        """Get cached relationship timeline
+
+        Args:
+            person1_id: First person ID
+            person2_id: Second person ID
+
+        Returns:
+            Optional[Dict]: Cached timeline or None
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            # Create consistent key regardless of person order
+            sorted_ids = tuple(sorted([person1_id, person2_id]))
+            key = self._make_key(f'timeline', f"{sorted_ids[0]}:{sorted_ids[1]}")
+            data = self.client.get(key)
+
+            if data:
+                return self._deserialize(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get cached relationship timeline: {e}")
+            return None
+
+    def invalidate_relationship_timeline(self, person1_id: str, person2_id: str) -> bool:
+        """Invalidate cached relationship timeline
+
+        Args:
+            person1_id: First person ID
+            person2_id: Second person ID
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            # Create consistent key regardless of person order
+            sorted_ids = tuple(sorted([person1_id, person2_id]))
+            key = self._make_key(f'timeline', f"{sorted_ids[0]}:{sorted_ids[1]}")
+            self.client.delete(key)
+            logger.debug(f"Invalidated timeline cache for persons: {person1_id}, {person2_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to invalidate relationship timeline cache: {e}")
+            return False
+
+    # ==========================================
+    # Risk Assessment Caching
+    # ==========================================
+
+    def cache_risk_assessment(self, person_id: str, assessment_data: Dict, ttl: Optional[int] = None) -> bool:
+        """Cache risk assessment for a person
+
+        Args:
+            person_id: Person ID
+            assessment_data: Risk assessment dictionary
+            ttl: Time to live in seconds
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('risk_assessment', person_id)
+            data = self._serialize(assessment_data)
+            ttl = ttl or self.RISK_ASSESSMENT_TTL
+
+            self.client.setex(key, ttl, data)
+            logger.debug(f"Cached risk assessment for person: {person_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to cache risk assessment: {e}")
+            return False
+
+    def get_cached_risk_assessment(self, person_id: str) -> Optional[Dict]:
+        """Get cached risk assessment for a person
+
+        Args:
+            person_id: Person ID
+
+        Returns:
+            Optional[Dict]: Cached assessment or None
+        """
+        if not self.enabled:
+            return None
+
+        try:
+            key = self._make_key('risk_assessment', person_id)
+            data = self.client.get(key)
+
+            if data:
+                return self._deserialize(data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get cached risk assessment: {e}")
+            return None
+
+    def invalidate_risk_assessment(self, person_id: str) -> bool:
+        """Invalidate cached risk assessment
+
+        Args:
+            person_id: Person ID
+
+        Returns:
+            bool: Success status
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            key = self._make_key('risk_assessment', person_id)
+            self.client.delete(key)
+            logger.debug(f"Invalidated risk assessment cache for person: {person_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to invalidate risk assessment cache: {e}")
             return False
 
     # ==========================================

@@ -22,6 +22,7 @@ from src.db.postgresql_adapter import PostgreSQLAdapter, DatabaseConfig
 from src.validation.csv_validator import CSVValidator
 from src.config.config_manager import ConfigManager, Configuration
 from src.pipeline.message_processor import MessageProcessor
+from src.pipeline.unified_processor import UnifiedProcessor, UnifiedAnalysisResult
 
 # Configure logging
 logging.basicConfig(
@@ -31,8 +32,71 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class UnifiedEnhancedMessageProcessor(UnifiedProcessor):
+    """Unified 15-pass processor with PostgreSQL integration"""
+
+    def __init__(self, config: Configuration, use_postgresql: bool = True):
+        """Initialize unified processor with PostgreSQL
+
+        Args:
+            config: Configuration object
+            use_postgresql: Whether to use PostgreSQL (True) or SQLite (False)
+        """
+        super().__init__(config)
+        self.use_postgresql = use_postgresql
+
+        if use_postgresql:
+            # Initialize PostgreSQL adapter
+            db_config = DatabaseConfig(
+                host="acdev.host",
+                database="messagestore",
+                user="msgprocess",
+                password="DHifde93jes9dk"
+            )
+            self.db = PostgreSQLAdapter(db_config)
+            logger.info("Using PostgreSQL backend at acdev.host")
+        else:
+            logger.info("Using SQLite backend")
+
+        self.csv_validator = CSVValidator(auto_correct=True)
+        self.stats = {
+            "messages_processed": 0,
+            "patterns_detected": 0,
+            "processing_time": 0
+        }
+
+    def process_csv_file(self, input_file: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Process CSV file with 15-pass unified pipeline
+
+        Args:
+            input_file: Path to CSV file
+            output_dir: Optional output directory
+
+        Returns:
+            Dict: Processing results
+        """
+        result = self.process_file(input_file, output_dir)
+
+        # Convert to dictionary for backward compatibility
+        return {
+            'analysis_run_id': result.analysis_run_id,
+            'input_file': result.input_file,
+            'message_count': result.message_count,
+            'speaker_count': result.speaker_count,
+            'processing_time': result.processing_time,
+            'overall_risk_level': result.overall_risk_level,
+            'primary_concerns': result.primary_concerns,
+            'recommendations': result.recommendations,
+            'export_paths': {
+                'json': result.json_output,
+                'csv': result.csv_output
+            },
+            'all_results': result
+        }
+
+
 class EnhancedMessageProcessor(MessageProcessor):
-    """Enhanced processor with PostgreSQL integration"""
+    """Enhanced processor with PostgreSQL integration (Legacy 10-pass)"""
 
     def __init__(self, config: Configuration, use_postgresql: bool = True):
         """Initialize enhanced processor
@@ -592,6 +656,12 @@ def main():
         help="Enable verbose output"
     )
 
+    parser.add_argument(
+        "--unified",
+        action="store_true",
+        help="Use 15-pass unified pipeline (includes person-centric analysis)"
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -602,11 +672,13 @@ def main():
         logging.getLogger('src').setLevel(logging.WARNING)
 
     print("=" * 60)
-    print("MESSAGE PROCESSOR - PSYCHOLOGICAL ANALYSIS SYSTEM")
+    pipeline_mode = "15-PASS UNIFIED (with person-centric analysis)" if args.unified else "10-PASS STANDARD"
+    print(f"MESSAGE PROCESSOR - {pipeline_mode}")
     print("=" * 60)
     print(f"Input file: {args.input_file}")
     print(f"Output directory: {args.output}")
     print(f"Backend: {'PostgreSQL (acdev.host)' if not args.use_sqlite else 'SQLite (local)'}")
+    print(f"Pipeline Mode: {pipeline_mode}")
     print("=" * 60)
 
     # Load configuration
@@ -621,11 +693,17 @@ def main():
     if args.no_deception:
         config.nlp.enable_deception_markers = False
 
-    # Create processor
-    processor = EnhancedMessageProcessor(
-        config,
-        use_postgresql=not args.use_sqlite
-    )
+    # Create processor (unified or legacy)
+    if args.unified:
+        processor = UnifiedEnhancedMessageProcessor(
+            config,
+            use_postgresql=not args.use_sqlite
+        )
+    else:
+        processor = EnhancedMessageProcessor(
+            config,
+            use_postgresql=not args.use_sqlite
+        )
 
     try:
         # Process file
@@ -633,31 +711,44 @@ def main():
 
         # Print final summary
         print("\n" + "=" * 60)
-        print("✅ ANALYSIS COMPLETE")
+        print("ANALYSIS COMPLETE")
         print("=" * 60)
         print(f"Messages processed: {result['message_count']}")
         print(f"Processing time: {result['processing_time']:.2f} seconds")
         print(f"Overall risk level: {result['overall_risk_level'].upper()}")
 
+        if args.unified:
+            print(f"Speakers identified: {result.get('speaker_count', 'N/A')}")
+
         if result['primary_concerns']:
-            print(f"\n🚨 Primary Concerns:")
-            for concern in result['primary_concerns']:
+            print(f"\nPrimary Concerns:")
+            for concern in result['primary_concerns'][:5]:
                 print(f"  • {concern}")
 
         if result['recommendations']:
-            print(f"\n💡 Recommendations:")
-            for rec in result['recommendations'][:3]:
+            print(f"\nRecommendations:")
+            for rec in result['recommendations'][:5]:
                 print(f"  • {rec}")
 
-        print(f"\n📁 Results exported to:")
+        print(f"\nResults exported to:")
         for file_type, path in result['export_paths'].items():
-            print(f"  • {file_type.upper()}: {path}")
+            if path:
+                print(f"  • {file_type.upper()}: {path}")
 
         if not args.use_sqlite:
-            print(f"\n🗄️  Data stored in PostgreSQL:")
+            print(f"\nData stored in PostgreSQL:")
             print(f"  • Analysis ID: {result['analysis_run_id']}")
             print(f"  • Database: acdev.host/messagestore")
-            print(f"  • All messages and patterns preserved for future reference")
+            print(f"  • Pipeline: {pipeline_mode}")
+
+        if args.unified:
+            print(f"\n15-Pass Unified Analysis Results:")
+            unified_result = result.get('all_results')
+            if unified_result:
+                print(f"  • Person-centric analysis: Completed")
+                print(f"  • Gaslighting detection: {unified_result.gaslighting_detection.get('gaslighting_risk', 'N/A')}")
+                print(f"  • Relationship dynamics: {unified_result.relationship_analysis.get('relationship_type', 'N/A')}")
+                print(f"  • Intervention priority: {unified_result.intervention_recommendations.get('intervention_priority', 'N/A')}")
 
         return 0
 

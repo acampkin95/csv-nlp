@@ -29,6 +29,9 @@ from src.cache.redis_cache import RedisCache
 # Import main processor
 from message_processor import EnhancedMessageProcessor
 
+# Import unified API
+from src.api.unified_api import create_api_blueprint
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -71,6 +74,7 @@ class ProjectManager:
     def __init__(self, db: PostgreSQLAdapter, cache: RedisCache):
         self.db = db
         self.cache = cache
+        self.persons = {}  # Store persons in project context
 
     def create_project(self, name: str, description: str, user_id: str = 'default') -> str:
         """Create a new project
@@ -91,7 +95,9 @@ class ProjectManager:
             'user_id': user_id,
             'created_at': datetime.now().isoformat(),
             'csv_sessions': [],
-            'analysis_runs': []
+            'analysis_runs': [],
+            'persons': [],
+            'interactions': []
         }
 
         # Store in cache
@@ -125,6 +131,28 @@ class ProjectManager:
             })
             self.cache.create_session(f'project:{project_id}', project)
 
+    def add_person_to_project(self, project_id: str, person_id: str, person_data: Dict):
+        """Add person to project"""
+        project = self.get_project(project_id)
+        if project:
+            project['persons'].append({
+                'id': person_id,
+                'data': person_data,
+                'added_at': datetime.now().isoformat()
+            })
+            self.cache.create_session(f'project:{project_id}', project)
+
+    def add_interaction_to_project(self, project_id: str, interaction_id: str, interaction_data: Dict):
+        """Add interaction to project"""
+        project = self.get_project(project_id)
+        if project:
+            project['interactions'].append({
+                'id': interaction_id,
+                'data': interaction_data,
+                'recorded_at': datetime.now().isoformat()
+            })
+            self.cache.create_session(f'project:{project_id}', project)
+
     def list_projects(self, user_id: str = 'default') -> List[Dict]:
         """List all projects for a user"""
         # For now, get from cache
@@ -133,6 +161,18 @@ class ProjectManager:
 
 
 project_manager = ProjectManager(db, redis_cache)
+
+# ==========================================
+# Unified API Integration
+# ==========================================
+
+# Create and register unified API blueprint
+api_blueprint, api_person_manager, api_interaction_tracker, relationship_analyzer, risk_engine = create_api_blueprint(
+    db, redis_cache
+)
+app.register_blueprint(api_blueprint)
+
+logger.info("Registered unified API blueprint with ppl_int features")
 
 
 # ==========================================

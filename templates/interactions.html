@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Interaction Analysis - Message Processor{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/persons.css') }}">
+<!-- D3.js for network visualization -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h2>Interaction Analysis & Timeline</h2>
+        <p class="text-muted">Track interactions, relationships, and risk progression over time</p>
+    </div>
+</div>
+
+<!-- Timeline Controls & Filters -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="search-filter-section">
+            <div class="search-filter-row">
+                <div class="filter-group">
+                    <label class="filter-label">Select Person</label>
+                    <select class="form-select" id="personFilter">
+                        <option value="">-- Select a person --</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Interaction Type</label>
+                    <select class="form-select" id="interactionFilter">
+                        <option value="">All Types</option>
+                        <option value="message">Message</option>
+                        <option value="call">Call</option>
+                        <option value="meeting">Meeting</option>
+                        <option value="incident">Incident</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Date Range</label>
+                    <input type="date" class="form-control" id="dateFromFilter">
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">To Date</label>
+                    <input type="date" class="form-control" id="dateToFilter">
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn btn-outline-secondary" id="resetTimeline">
+                    <i class="fas fa-redo"></i> Reset
+                </button>
+                <button class="btn btn-primary" id="applyTimeline">
+                    <i class="fas fa-search"></i> Filter Timeline
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs for different views -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <ul class="nav nav-tabs" id="interactionTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="timeline-tab" data-bs-toggle="tab"
+                        data-bs-target="#timeline" type="button">Timeline View</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="network-tab" data-bs-toggle="tab"
+                        data-bs-target="#network" type="button">Relationship Network</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="progression-tab" data-bs-toggle="tab"
+                        data-bs-target="#progression" type="button">Risk Progression</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="recommendations-tab" data-bs-toggle="tab"
+                        data-bs-target="#recommendations" type="button">Interventions</button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-3" id="interactionTabContent">
+            <!-- Timeline View Tab -->
+            <div class="tab-pane fade show active" id="timeline" role="tabpanel">
+                <div class="timeline-container">
+                    <div class="timeline-header">
+                        <h5 class="timeline-title">Interaction Timeline</h5>
+                        <div class="timeline-controls">
+                            <button class="timeline-control-btn active" data-granularity="day">Day</button>
+                            <button class="timeline-control-btn" data-granularity="week">Week</button>
+                            <button class="timeline-control-btn" data-granularity="month">Month</button>
+                        </div>
+                    </div>
+
+                    <div class="timeline-viz" id="timelineViz">
+                        <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                            <div class="spinner" style="display: inline-block;"></div>
+                            <p class="mt-2">Loading timeline data...</p>
+                        </div>
+                    </div>
+
+                    <div id="timelineList">
+                        <!-- Timeline entries will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Relationship Network Tab -->
+            <div class="tab-pane fade" id="network" role="tabpanel">
+                <div class="network-container">
+                    <div class="network-header">
+                        <h5 class="network-title">Relationship Network</h5>
+                        <div class="network-options">
+                            <div class="network-option">
+                                <input type="checkbox" id="showDirectConnections" checked>
+                                <label for="showDirectConnections">Direct Connections</label>
+                            </div>
+                            <div class="network-option">
+                                <input type="checkbox" id="showSecondaryConnections">
+                                <label for="showSecondaryConnections">Secondary Connections</label>
+                            </div>
+                            <div class="network-option">
+                                <input type="checkbox" id="showRiskNodes">
+                                <label for="showRiskNodes">High Risk Only</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <svg class="network-viz" id="networkViz"></svg>
+
+                    <div class="network-legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #667eea;"></div>
+                            <span class="legend-label">Primary Person</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #764ba2;"></div>
+                            <span class="legend-label">Connected Person</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #dc3545;"></div>
+                            <span class="legend-label">High Risk</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #ffc107;"></div>
+                            <span class="legend-label">Moderate Risk</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #198754;"></div>
+                            <span class="legend-label">Low Risk</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Risk Progression Tab -->
+            <div class="tab-pane fade" id="progression" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5>Risk Score Progression</h5>
+                                <div id="riskProgressionChart" style="height: 400px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <div class="risk-progression">
+                            <div class="risk-progression-title">Risk Escalation Timeline</div>
+                            <div id="riskProgressionTimeline">
+                                <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                                    <div class="spinner" style="display: inline-block;"></div>
+                                    <p class="mt-2">Loading risk progression...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interventions Tab -->
+            <div class="tab-pane fade" id="recommendations" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="interventions-container">
+                            <div class="interventions-header">Recommended Interventions</div>
+                            <div id="interventionsList">
+                                <div style="text-align: center; padding: 2rem; color: #6c757d;">
+                                    <div class="spinner" style="display: inline-block;"></div>
+                                    <p class="mt-2">Loading recommendations...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">Intervention Summary</h6>
+                            </div>
+                            <div class="card-body">
+                                <div style="margin-bottom: 1rem;">
+                                    <small class="text-muted">URGENT</small>
+                                    <div style="font-size: 2rem; font-weight: bold; color: #dc3545;">
+                                        <span id="urgentCount">0</span>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 1rem;">
+                                    <small class="text-muted">IMPORTANT</small>
+                                    <div style="font-size: 2rem; font-weight: bold; color: #ffc107;">
+                                        <span id="importantCount">0</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <small class="text-muted">ROUTINE</small>
+                                    <div style="font-size: 2rem; font-weight: bold; color: #198754;">
+                                        <span id="routineCount">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h6 class="mb-0">Actions</h6>
+                            </div>
+                            <div class="card-body">
+                                <button class="btn btn-warning btn-sm btn-block w-100 mb-2" id="generateReport">
+                                    <i class="fas fa-file-pdf"></i> Generate Report
+                                </button>
+                                <button class="btn btn-info btn-sm btn-block w-100" id="escalateCase">
+                                    <i class="fas fa-exclamation-triangle"></i> Escalate Case
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Activity Log Modal -->
+<div class="modal fade" id="activityModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Activity Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="activityContent">
+                <!-- Content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- WebSocket Connection Status Indicator -->
+<div id="wsStatusIndicator" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;">
+    <div class="badge bg-success" id="wsStatus">
+        <i class="fas fa-circle"></i> Connected
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script src="{{ url_for('static', filename='js/person_manager.js') }}"></script>
+<script>
+    // Initialize interaction analyzer on page load
+    $(document).ready(function() {
+        const interactionAnalyzer = new InteractionAnalyzer();
+        interactionAnalyzer.init();
+
+        // Handle tab changes
+        $('#interactionTabs button').on('click', function() {
+            const target = $(this).data('bs-target');
+            setTimeout(() => {
+                if (target === '#network') {
+                    interactionAnalyzer.renderNetworkGraph();
+                } else if (target === '#progression') {
+                    interactionAnalyzer.renderRiskProgression();
+                }
+            }, 100);
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Person Management - Message Processor{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/persons.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2>Person Management</h2>
+            <button class="btn btn-primary" id="addPersonBtn" data-bs-toggle="modal" data-bs-target="#personModal">
+                <i class="fas fa-plus"></i> Add New Person
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Search & Filter Section -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="search-filter-section">
+            <div class="search-filter-row">
+                <div class="filter-group">
+                    <label class="filter-label">Search by Name or Email</label>
+                    <input type="text" class="form-control" id="searchInput"
+                           placeholder="Enter name or email...">
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Risk Level</label>
+                    <select class="form-select" id="riskFilter">
+                        <option value="">All Levels</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <select class="form-select" id="statusFilter">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                        <option value="flagged">Flagged</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Sort By</label>
+                    <select class="form-select" id="sortBy">
+                        <option value="name">Name (A-Z)</option>
+                        <option value="risk">Risk Level (High-Low)</option>
+                        <option value="recent">Recently Updated</option>
+                        <option value="interactions">Most Interactions</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn btn-outline-secondary" id="resetFilters">
+                    <i class="fas fa-redo"></i> Reset Filters
+                </button>
+                <button class="btn btn-primary" id="applyFilters">
+                    <i class="fas fa-search"></i> Apply Filters
+                </button>
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+                    <span id="resultCount" style="color: #6c757d; font-size: 0.95rem;">0 people found</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Risk Dashboard Stats -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="risk-dashboard">
+            <div class="risk-summary-card critical">
+                <div class="risk-stat-number" id="criticalCount">0</div>
+                <div class="risk-stat-label">Critical Risk</div>
+            </div>
+            <div class="risk-summary-card high">
+                <div class="risk-stat-number" id="highCount">0</div>
+                <div class="risk-stat-label">High Risk</div>
+            </div>
+            <div class="risk-summary-card moderate">
+                <div class="risk-stat-number" id="moderateCount">0</div>
+                <div class="risk-stat-label">Moderate Risk</div>
+            </div>
+            <div class="risk-summary-card low">
+                <div class="risk-stat-number" id="lowCount">0</div>
+                <div class="risk-stat-label">Low Risk</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Person Grid View -->
+<div class="row">
+    <div class="col-md-12">
+        <div id="personGrid" class="person-grid">
+            <div style="grid-column: 1/-1; text-align: center;">
+                <div class="spinner"></div>
+                <p class="text-muted mt-2">Loading persons...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Person Modal -->
+<div class="modal fade" id="personModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="personModalLabel">Add New Person</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="personForm">
+                    <input type="hidden" id="personId">
+
+                    <!-- Personal Information -->
+                    <div class="form-section">
+                        <h6 class="form-section-title">Personal Information</h6>
+
+                        <div class="form-group">
+                            <label for="firstName">First Name *</label>
+                            <input type="text" class="form-control" id="firstName" required>
+                            <small class="form-text">Person's first name</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="lastName">Last Name *</label>
+                            <input type="text" class="form-control" id="lastName" required>
+                            <small class="form-text">Person's last name</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="email">Email Address *</label>
+                            <input type="email" class="form-control" id="email" required>
+                            <small class="form-text">Contact email address</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone">Phone Number</label>
+                            <input type="tel" class="form-control" id="phone">
+                            <small class="form-text">Contact phone number (optional)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="status">Status *</label>
+                            <select class="form-select" id="status" required>
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="flagged">Flagged</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Risk Assessment -->
+                    <div class="form-section">
+                        <h6 class="form-section-title">Risk Assessment</h6>
+
+                        <div class="form-group">
+                            <label for="riskLevel">Risk Level *</label>
+                            <select class="form-select" id="riskLevel" required>
+                                <option value="">Select risk level</option>
+                                <option value="low">Low</option>
+                                <option value="moderate">Moderate</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="riskScore">Risk Score (0-100)</label>
+                            <input type="number" class="form-control" id="riskScore" min="0" max="100">
+                            <small class="form-text">Numerical risk score (0-100)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="riskNotes">Risk Assessment Notes</label>
+                            <textarea class="form-control" id="riskNotes"
+                                      placeholder="Document risk assessment findings..."></textarea>
+                            <small class="form-text">Detailed notes about risk assessment</small>
+                        </div>
+                    </div>
+
+                    <!-- Additional Information -->
+                    <div class="form-section">
+                        <h6 class="form-section-title">Additional Information</h6>
+
+                        <div class="form-group">
+                            <label for="notes">Notes</label>
+                            <textarea class="form-control" id="notes"
+                                      placeholder="Additional notes about this person..."></textarea>
+                            <small class="form-text">Any additional information</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="tags">Tags</label>
+                            <input type="text" class="form-control" id="tags"
+                                   placeholder="Enter tags separated by commas">
+                            <small class="form-text">Comma-separated tags for organization</small>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="savePersonBtn">Save Person</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Person Detail Modal -->
+<div class="modal fade" id="personDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailModalLabel">Person Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="personDetailContent">
+                <div class="spinner"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="editPersonDetailBtn">Edit</button>
+                <button type="button" class="btn btn-warning" id="viewInteractionsBtn">View Interactions</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/person_manager.js') }}"></script>
+<script>
+    // Initialize person manager on page load
+    $(document).ready(function() {
+        const personManager = new PersonManager();
+        personManager.init();
+    });
+</script>
+{% endblock %}
