@@ -27,6 +27,7 @@ from validation.csv_validator import CSVValidator
 from validation.timestamp_validator import TimestampValidator
 from config.config_manager import ConfigManager, Configuration
 from nlp.sentiment_analyzer import SentimentAnalyzer
+from nlp.empath_analyzer import EmpathAnalyzer
 from nlp.grooming_detector import GroomingDetector
 from nlp.manipulation_detector import ManipulationDetector
 from nlp.deception_analyzer import DeceptionAnalyzer
@@ -55,6 +56,7 @@ class ProcessingResult:
 
     # Analysis results
     sentiment_results: Dict[str, Any]
+    empath_results: Dict[str, Any]
     grooming_results: Dict[str, Any]
     manipulation_results: Dict[str, Any]
     deception_results: Dict[str, Any]
@@ -100,6 +102,7 @@ class MessageProcessor:
         # Initialize NLP modules
         logger.info("Initializing NLP modules...")
         self.sentiment_analyzer = SentimentAnalyzer()
+        self.empath_analyzer = EmpathAnalyzer()
         self.grooming_detector = GroomingDetector()
         self.manipulation_detector = ManipulationDetector()
         self.deception_analyzer = DeceptionAnalyzer()
@@ -207,36 +210,41 @@ class MessageProcessor:
             logger.info("Pass 1: Sentiment analysis")
             sentiment_results = self._process_sentiment(messages)
 
-            # Pass 2: Grooming Detection
-            logger.info("Pass 2: Grooming pattern detection")
+            # Pass 2: Empath Psychological & Topical Analysis
+            logger.info("Pass 2: Empath psychological and topical analysis (200+ categories)")
+            empath_results = self._process_empath(messages)
+
+            # Pass 3: Grooming Detection
+            logger.info("Pass 3: Grooming pattern detection")
             grooming_results = {}
             if self.config.nlp.enable_grooming_detection:
                 grooming_results = self.grooming_detector.analyze_conversation(messages)
 
-            # Pass 3: Manipulation Detection
-            logger.info("Pass 3: Manipulation and gaslighting detection")
+            # Pass 4: Manipulation Detection
+            logger.info("Pass 4: Manipulation and gaslighting detection")
             manipulation_results = {}
             if self.config.nlp.enable_manipulation_detection:
                 manipulation_results = self.manipulation_detector.analyze_conversation(messages)
 
-            # Pass 4: Deception Analysis
-            logger.info("Pass 4: Deception markers analysis")
+            # Pass 5: Deception Analysis
+            logger.info("Pass 5: Deception markers analysis")
             deception_results = {}
             if self.config.nlp.enable_deception_markers:
                 deception_results = self.deception_analyzer.analyze_conversation(messages)
 
-            # Pass 5: Intent Classification
-            logger.info("Pass 5: Intent classification")
+            # Pass 6: Intent Classification
+            logger.info("Pass 6: Intent classification")
             intent_results = {}
             if self.config.nlp.enable_intent_classification:
                 intent_results = self.intent_classifier.analyze_conversation_intents(messages)
 
-            # Pass 6: Risk Assessment
-            logger.info("Pass 6: Comprehensive risk assessment")
+            # Pass 7: Risk Assessment
+            logger.info("Pass 7: Comprehensive risk assessment")
             risk_assessment = self._perform_risk_assessment(
                 messages,
                 {
                     'sentiment': sentiment_results,
+                    'empath': empath_results,
                     'grooming': grooming_results,
                     'manipulation': manipulation_results,
                     'deception': deception_results,
@@ -244,26 +252,27 @@ class MessageProcessor:
                 }
             )
 
-            # Pass 7: Speaker Baseline Profiling (for anomaly detection)
-            logger.info("Pass 7: Building speaker baselines")
+            # Pass 8: Speaker Baseline Profiling (for anomaly detection)
+            logger.info("Pass 8: Building speaker baselines")
             self._build_speaker_baselines(messages, sentiment_results, risk_assessment)
 
-            # Pass 8: Temporal Analysis (with timestamp validation)
-            logger.info("Pass 8: Temporal pattern analysis")
+            # Pass 9: Temporal Analysis (with timestamp validation)
+            logger.info("Pass 9: Temporal pattern analysis")
             temporal_results = self._perform_temporal_analysis(messages, risk_assessment)
 
-            # Pass 9: Confidence Scoring & Anomaly Detection
-            logger.info("Pass 9: Calculating confidence scores and detecting anomalies")
+            # Pass 10: Confidence Scoring & Anomaly Detection
+            logger.info("Pass 10: Calculating confidence scores and detecting anomalies")
             confidence_results = self._calculate_confidence_scores(messages, risk_assessment)
 
-            # Pass 10: Pattern Storage
-            logger.info("Pass 10: Pattern storage and indexing")
+            # Pass 11: Pattern Storage
+            logger.info("Pass 11: Pattern storage and indexing")
             self._store_patterns(run_id, messages, risk_assessment)
 
-            # Pass 11: Generate Insights
-            logger.info("Pass 11: Generating insights and recommendations")
+            # Pass 12: Generate Insights
+            logger.info("Pass 12: Generating insights and recommendations")
             insights = self._generate_insights(
                 sentiment_results,
+                empath_results,
                 grooming_results,
                 manipulation_results,
                 deception_results,
@@ -273,12 +282,13 @@ class MessageProcessor:
                 confidence_results
             )
 
-            # Pass 12: Export Results
-            logger.info("Pass 12: Exporting results")
+            # Pass 13: Export Results
+            logger.info("Pass 13: Exporting results")
             export_paths = self._export_results(
                 run_id,
                 {
                     'sentiment': sentiment_results,
+                    'empath': empath_results,
                     'grooming': grooming_results,
                     'manipulation': manipulation_results,
                     'deception': deception_results,
@@ -309,6 +319,7 @@ class MessageProcessor:
                 speaker_count=len(df['sender'].unique()),
                 processing_time=processing_time,
                 sentiment_results=sentiment_results,
+                empath_results=empath_results,
                 grooming_results=grooming_results,
                 manipulation_results=manipulation_results,
                 deception_results=deception_results,
@@ -339,6 +350,7 @@ class MessageProcessor:
                         'speaker_count': len(df['sender'].unique()),
                         'processing_time': processing_time,
                         'sentiment_results': sentiment_results,
+                        'empath_results': empath_results,
                         'grooming_results': grooming_results,
                         'manipulation_results': manipulation_results,
                         'deception_results': deception_results,
@@ -383,6 +395,7 @@ class MessageProcessor:
                 cached_data.get('analysis_run_id', 0),
                 {
                     'sentiment': cached_data.get('sentiment_results', {}),
+                    'empath': cached_data.get('empath_results', {}),
                     'grooming': cached_data.get('grooming_results', {}),
                     'manipulation': cached_data.get('manipulation_results', {}),
                     'deception': cached_data.get('deception_results', {}),
@@ -405,6 +418,7 @@ class MessageProcessor:
             speaker_count=cached_data.get('speaker_count', 0),
             processing_time=0.001,  # Cache retrieval is nearly instant
             sentiment_results=cached_data.get('sentiment_results', {}),
+            empath_results=cached_data.get('empath_results', {}),
             grooming_results=cached_data.get('grooming_results', {}),
             manipulation_results=cached_data.get('manipulation_results', {}),
             deception_results=cached_data.get('deception_results', {}),
@@ -699,6 +713,29 @@ class MessageProcessor:
             'conversation': conversation_sentiment
         }
 
+    def _process_empath(self, messages: List[Dict]) -> Dict[str, Any]:
+        """Process Empath analysis for all messages
+
+        Args:
+            messages: List of messages
+
+        Returns:
+            Dict: Empath analysis results
+        """
+        # Empath is fast enough for sequential processing
+        message_empath = []
+        for msg in messages:
+            empath_result = self.empath_analyzer.analyze_text(msg['text'])
+            message_empath.append(empath_result)
+
+        # Analyze conversation-level Empath patterns
+        conversation_empath = self.empath_analyzer.analyze_conversation(messages)
+
+        return {
+            'per_message': message_empath,
+            'conversation': conversation_empath
+        }
+
     def _perform_risk_assessment(self, messages: List[Dict], analyses: Dict[str, Any]) -> Dict[str, Any]:
         """Perform comprehensive risk assessment
 
@@ -793,13 +830,13 @@ class MessageProcessor:
             self.db.insert_patterns_batch(patterns)
             logger.info(f"Stored {len(patterns)} patterns in database")
 
-    def _generate_insights(self, sentiment: Dict, grooming: Dict, manipulation: Dict,
+    def _generate_insights(self, sentiment: Dict, empath: Dict, grooming: Dict, manipulation: Dict,
                           deception: Dict, intent: Dict, risk: Dict, temporal: Dict = None,
                           confidence: Dict = None) -> Dict[str, Any]:
         """Generate key insights and recommendations
 
         Args:
-            Various analysis results including temporal and confidence
+            Various analysis results including Empath, temporal, and confidence
 
         Returns:
             Dict: Insights and recommendations
@@ -829,6 +866,56 @@ class MessageProcessor:
                 )
             if conv_sentiment.get('emotional_volatility', 0) > 0.5:
                 insights['key_findings'].append("High emotional volatility detected")
+
+        # Key findings from Empath (psychological & topical analysis)
+        if empath.get('conversation'):
+            conv_empath = empath['conversation']
+
+            # Report dominant emotional theme
+            if conv_empath.get('dominant_emotion'):
+                insights['key_findings'].append(
+                    f"Dominant emotion: {conv_empath['dominant_emotion']}"
+                )
+
+            # Report dominant topic
+            if conv_empath.get('dominant_topic'):
+                insights['key_findings'].append(
+                    f"Primary topic: {conv_empath['dominant_topic']}"
+                )
+
+            # Report conversation themes (top 3)
+            if conv_empath.get('overall_themes'):
+                top_themes = conv_empath['overall_themes'][:3]
+                theme_names = [theme[0] for theme in top_themes]
+                insights['key_findings'].append(
+                    f"Conversation themes: {', '.join(theme_names)}"
+                )
+
+            # Report emotional trajectory
+            if conv_empath.get('emotional_trajectory'):
+                traj = conv_empath['emotional_trajectory']
+                if traj in ['escalating', 'volatile']:
+                    insights['key_findings'].append(
+                        f"⚠️  Emotional trajectory: {traj}"
+                    )
+                    if traj == 'escalating':
+                        insights['primary_concerns'].append("Escalating emotional intensity")
+                else:
+                    insights['key_findings'].append(
+                        f"Emotional trajectory: {traj}"
+                    )
+
+            # Report speaker profiles (risk indicators)
+            if conv_empath.get('speaker_profiles'):
+                high_risk_speakers = []
+                for speaker, profile in conv_empath['speaker_profiles'].items():
+                    if profile.get('avg_risk_score', 0) > 0.3:  # High risk threshold
+                        high_risk_speakers.append(speaker)
+
+                if high_risk_speakers:
+                    insights['recommendations'].append(
+                        f"Review messages from: {', '.join(high_risk_speakers)} (elevated Empath risk indicators)"
+                    )
 
         # Key findings from grooming
         if grooming.get('overall_risk'):
