@@ -102,3 +102,7 @@ archive/
 # PostgreSQL connection info (keep template only)
 config/*.json
 !config/default.json.template
+
+# Documentation (stored in Data Store)
+*.md
+!README.txt
