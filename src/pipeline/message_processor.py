@@ -28,6 +28,7 @@ from validation.timestamp_validator import TimestampValidator
 from config.config_manager import ConfigManager, Configuration
 from nlp.sentiment_analyzer import SentimentAnalyzer
 from nlp.empath_analyzer import EmpathAnalyzer
+from nlp.ai_detector import AIContentDetector
 from nlp.grooming_detector import GroomingDetector
 from nlp.manipulation_detector import ManipulationDetector
 from nlp.deception_analyzer import DeceptionAnalyzer
@@ -57,6 +58,7 @@ class ProcessingResult:
     # Analysis results
     sentiment_results: Dict[str, Any]
     empath_results: Dict[str, Any]
+    ai_detection_results: Dict[str, Any]
     grooming_results: Dict[str, Any]
     manipulation_results: Dict[str, Any]
     deception_results: Dict[str, Any]
@@ -103,6 +105,7 @@ class MessageProcessor:
         logger.info("Initializing NLP modules...")
         self.sentiment_analyzer = SentimentAnalyzer()
         self.empath_analyzer = EmpathAnalyzer()
+        self.ai_detector = AIContentDetector()
         self.grooming_detector = GroomingDetector()
         self.manipulation_detector = ManipulationDetector()
         self.deception_analyzer = DeceptionAnalyzer()
@@ -123,6 +126,9 @@ class MessageProcessor:
         self.confidence_scorer = ConfidenceScorer()
         self.context_analyzer = ContextAwareAnalyzer()
         logger.info("✅ Accuracy improvements enabled (confidence scoring, context-aware analysis, speaker profiling)")
+
+        # Initialize AI content detector
+        logger.info("✅ AI content detection enabled (heuristic + ML-based when available)")
 
         # Initialize analysis result cache
         if enable_cache:
@@ -214,37 +220,42 @@ class MessageProcessor:
             logger.info("Pass 2: Empath psychological and topical analysis (200+ categories)")
             empath_results = self._process_empath(messages)
 
-            # Pass 3: Grooming Detection
-            logger.info("Pass 3: Grooming pattern detection")
+            # Pass 3: AI-Generated Content Detection
+            logger.info("Pass 3: AI-generated content detection")
+            ai_detection_results = self._process_ai_detection(messages)
+
+            # Pass 4: Grooming Detection
+            logger.info("Pass 4: Grooming pattern detection")
             grooming_results = {}
             if self.config.nlp.enable_grooming_detection:
                 grooming_results = self.grooming_detector.analyze_conversation(messages)
 
-            # Pass 4: Manipulation Detection
-            logger.info("Pass 4: Manipulation and gaslighting detection")
+            # Pass 5: Manipulation Detection
+            logger.info("Pass 5: Manipulation and gaslighting detection")
             manipulation_results = {}
             if self.config.nlp.enable_manipulation_detection:
                 manipulation_results = self.manipulation_detector.analyze_conversation(messages)
 
-            # Pass 5: Deception Analysis
-            logger.info("Pass 5: Deception markers analysis")
+            # Pass 6: Deception Analysis
+            logger.info("Pass 6: Deception markers analysis")
             deception_results = {}
             if self.config.nlp.enable_deception_markers:
                 deception_results = self.deception_analyzer.analyze_conversation(messages)
 
-            # Pass 6: Intent Classification
-            logger.info("Pass 6: Intent classification")
+            # Pass 7: Intent Classification
+            logger.info("Pass 7: Intent classification")
             intent_results = {}
             if self.config.nlp.enable_intent_classification:
                 intent_results = self.intent_classifier.analyze_conversation_intents(messages)
 
-            # Pass 7: Risk Assessment
-            logger.info("Pass 7: Comprehensive risk assessment")
+            # Pass 8: Risk Assessment
+            logger.info("Pass 8: Comprehensive risk assessment")
             risk_assessment = self._perform_risk_assessment(
                 messages,
                 {
                     'sentiment': sentiment_results,
                     'empath': empath_results,
+                    'ai_detection': ai_detection_results,
                     'grooming': grooming_results,
                     'manipulation': manipulation_results,
                     'deception': deception_results,
@@ -252,27 +263,28 @@ class MessageProcessor:
                 }
             )
 
-            # Pass 8: Speaker Baseline Profiling (for anomaly detection)
-            logger.info("Pass 8: Building speaker baselines")
+            # Pass 9: Speaker Baseline Profiling (for anomaly detection)
+            logger.info("Pass 9: Building speaker baselines")
             self._build_speaker_baselines(messages, sentiment_results, risk_assessment)
 
-            # Pass 9: Temporal Analysis (with timestamp validation)
-            logger.info("Pass 9: Temporal pattern analysis")
+            # Pass 10: Temporal Analysis (with timestamp validation)
+            logger.info("Pass 10: Temporal pattern analysis")
             temporal_results = self._perform_temporal_analysis(messages, risk_assessment)
 
-            # Pass 10: Confidence Scoring & Anomaly Detection
-            logger.info("Pass 10: Calculating confidence scores and detecting anomalies")
+            # Pass 11: Confidence Scoring & Anomaly Detection
+            logger.info("Pass 11: Calculating confidence scores and detecting anomalies")
             confidence_results = self._calculate_confidence_scores(messages, risk_assessment)
 
-            # Pass 11: Pattern Storage
-            logger.info("Pass 11: Pattern storage and indexing")
+            # Pass 12: Pattern Storage
+            logger.info("Pass 12: Pattern storage and indexing")
             self._store_patterns(run_id, messages, risk_assessment)
 
-            # Pass 12: Generate Insights
-            logger.info("Pass 12: Generating insights and recommendations")
+            # Pass 13: Generate Insights
+            logger.info("Pass 13: Generating insights and recommendations")
             insights = self._generate_insights(
                 sentiment_results,
                 empath_results,
+                ai_detection_results,
                 grooming_results,
                 manipulation_results,
                 deception_results,
@@ -282,13 +294,14 @@ class MessageProcessor:
                 confidence_results
             )
 
-            # Pass 13: Export Results
-            logger.info("Pass 13: Exporting results")
+            # Pass 14: Export Results
+            logger.info("Pass 14: Exporting results")
             export_paths = self._export_results(
                 run_id,
                 {
                     'sentiment': sentiment_results,
                     'empath': empath_results,
+                    'ai_detection': ai_detection_results,
                     'grooming': grooming_results,
                     'manipulation': manipulation_results,
                     'deception': deception_results,
@@ -320,6 +333,7 @@ class MessageProcessor:
                 processing_time=processing_time,
                 sentiment_results=sentiment_results,
                 empath_results=empath_results,
+                ai_detection_results=ai_detection_results,
                 grooming_results=grooming_results,
                 manipulation_results=manipulation_results,
                 deception_results=deception_results,
@@ -351,6 +365,7 @@ class MessageProcessor:
                         'processing_time': processing_time,
                         'sentiment_results': sentiment_results,
                         'empath_results': empath_results,
+                        'ai_detection_results': ai_detection_results,
                         'grooming_results': grooming_results,
                         'manipulation_results': manipulation_results,
                         'deception_results': deception_results,
@@ -396,6 +411,7 @@ class MessageProcessor:
                 {
                     'sentiment': cached_data.get('sentiment_results', {}),
                     'empath': cached_data.get('empath_results', {}),
+                    'ai_detection': cached_data.get('ai_detection_results', {}),
                     'grooming': cached_data.get('grooming_results', {}),
                     'manipulation': cached_data.get('manipulation_results', {}),
                     'deception': cached_data.get('deception_results', {}),
@@ -419,6 +435,7 @@ class MessageProcessor:
             processing_time=0.001,  # Cache retrieval is nearly instant
             sentiment_results=cached_data.get('sentiment_results', {}),
             empath_results=cached_data.get('empath_results', {}),
+            ai_detection_results=cached_data.get('ai_detection_results', {}),
             grooming_results=cached_data.get('grooming_results', {}),
             manipulation_results=cached_data.get('manipulation_results', {}),
             deception_results=cached_data.get('deception_results', {}),
@@ -736,6 +753,29 @@ class MessageProcessor:
             'conversation': conversation_empath
         }
 
+    def _process_ai_detection(self, messages: List[Dict]) -> Dict[str, Any]:
+        """Process AI-generated content detection for all messages
+
+        Args:
+            messages: List of messages
+
+        Returns:
+            Dict: AI detection analysis results
+        """
+        # Detect AI-generated content per message
+        message_ai_results = []
+        for msg in messages:
+            ai_result = self.ai_detector.detect_ai_content(msg['text'])
+            message_ai_results.append(ai_result)
+
+        # Analyze conversation-level AI usage patterns
+        conversation_ai = self.ai_detector.analyze_conversation(messages)
+
+        return {
+            'per_message': message_ai_results,
+            'conversation': conversation_ai
+        }
+
     def _perform_risk_assessment(self, messages: List[Dict], analyses: Dict[str, Any]) -> Dict[str, Any]:
         """Perform comprehensive risk assessment
 
@@ -830,13 +870,13 @@ class MessageProcessor:
             self.db.insert_patterns_batch(patterns)
             logger.info(f"Stored {len(patterns)} patterns in database")
 
-    def _generate_insights(self, sentiment: Dict, empath: Dict, grooming: Dict, manipulation: Dict,
-                          deception: Dict, intent: Dict, risk: Dict, temporal: Dict = None,
-                          confidence: Dict = None) -> Dict[str, Any]:
+    def _generate_insights(self, sentiment: Dict, empath: Dict, ai_detection: Dict, grooming: Dict,
+                          manipulation: Dict, deception: Dict, intent: Dict, risk: Dict,
+                          temporal: Dict = None, confidence: Dict = None) -> Dict[str, Any]:
         """Generate key insights and recommendations
 
         Args:
-            Various analysis results including Empath, temporal, and confidence
+            Various analysis results including Empath, AI detection, temporal, and confidence
 
         Returns:
             Dict: Insights and recommendations
@@ -916,6 +956,63 @@ class MessageProcessor:
                     insights['recommendations'].append(
                         f"Review messages from: {', '.join(high_risk_speakers)} (elevated Empath risk indicators)"
                     )
+
+        # Key findings from AI-generated content detection
+        if ai_detection.get('conversation'):
+            conv_ai = ai_detection['conversation']
+
+            # Report AI usage percentage
+            if conv_ai.get('ai_percentage', 0) > 0:
+                ai_pct = conv_ai['ai_percentage']
+                insights['key_findings'].append(
+                    f"🤖 AI-generated content detected: {ai_pct:.1f}% of messages flagged"
+                )
+
+                # Flag as primary concern if significant AI usage
+                if ai_pct > 30:
+                    insights['primary_concerns'].append("⚠️  Significant AI-generated content detected")
+                    insights['key_findings'].append(
+                        f"⚠️  HIGH AI USAGE: {conv_ai.get('messages_flagged', 0)} of {conv_ai.get('total_messages', 0)} messages"
+                    )
+
+            # Report speakers flagged for AI usage
+            if conv_ai.get('speakers_flagged'):
+                speakers = conv_ai['speakers_flagged']
+                insights['key_findings'].append(
+                    f"🤖 Speakers with AI-generated content: {', '.join(speakers)}"
+                )
+
+                # Add detailed recommendations for each flagged speaker
+                for speaker in speakers:
+                    if speaker in conv_ai.get('speaker_ai_scores', {}):
+                        ai_ratio = conv_ai['speaker_ai_scores'][speaker]
+                        insights['recommendations'].append(
+                            f"⚠️  INVESTIGATE {speaker}: {ai_ratio:.0%} AI-generated content detected"
+                        )
+
+            # Report high-confidence AI detections
+            high_conf_ai = conv_ai.get('high_confidence_ai', [])
+            if high_conf_ai:
+                insights['key_findings'].append(
+                    f"🤖 {len(high_conf_ai)} message(s) with HIGH CONFIDENCE AI detection"
+                )
+
+                # Add top 3 high-confidence detections to recommendations
+                for detection in high_conf_ai[:3]:
+                    msg_idx = detection.get('message_index', 0)
+                    speaker = detection.get('sender', 'Unknown')
+                    confidence = detection.get('confidence', 0)
+                    insights['recommendations'].append(
+                        f"Review message #{msg_idx + 1} from {speaker} (AI confidence: {confidence:.0%})"
+                    )
+
+            # Report consecutive AI messages (potential bot behavior)
+            if conv_ai.get('consecutive_ai_messages', 0) >= 3:
+                consecutive = conv_ai['consecutive_ai_messages']
+                insights['primary_concerns'].append("Potential automated/bot behavior detected")
+                insights['key_findings'].append(
+                    f"⚠️  {consecutive} consecutive AI-generated messages detected"
+                )
 
         # Key findings from grooming
         if grooming.get('overall_risk'):
