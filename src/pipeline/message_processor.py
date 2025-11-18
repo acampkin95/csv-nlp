@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import our modules
 from db.database import DatabaseAdapter, Message, AnalysisRun, Pattern
 from validation.csv_validator import CSVValidator
+from validation.timestamp_validator import TimestampValidator
 from config.config_manager import ConfigManager, Configuration
 from nlp.sentiment_analyzer import SentimentAnalyzer
 from nlp.grooming_detector import GroomingDetector
@@ -31,6 +32,8 @@ from nlp.manipulation_detector import ManipulationDetector
 from nlp.deception_analyzer import DeceptionAnalyzer
 from nlp.intent_classifier import IntentClassifier
 from nlp.risk_scorer import BehavioralRiskScorer
+from nlp.temporal_analyzer import TemporalAnalyzer
+from cache.analysis_cache import AnalysisResultCache, create_analysis_cache
 
 # Configure logging
 logging.basicConfig(
@@ -56,12 +59,17 @@ class ProcessingResult:
     deception_results: Dict[str, Any]
     intent_results: Dict[str, Any]
     risk_assessment: Dict[str, Any]
+    temporal_results: Optional[Dict[str, Any]] = None
 
     # Aggregated insights
     overall_risk_level: str
     primary_concerns: List[str]
     key_findings: List[str]
     recommendations: List[str]
+
+    # Cache performance
+    cache_hit: bool = False
+    cache_stats: Optional[Dict[str, Any]] = None
 
     # Export paths
     json_output: Optional[str] = None
@@ -72,11 +80,12 @@ class ProcessingResult:
 class MessageProcessor:
     """Main processing pipeline for message analysis"""
 
-    def __init__(self, config: Configuration):
+    def __init__(self, config: Configuration, enable_cache: bool = True):
         """Initialize processor with configuration
 
         Args:
             config: Configuration object
+            enable_cache: Enable Redis analysis caching (default: True)
         """
         self.config = config
 
@@ -85,6 +94,7 @@ class MessageProcessor:
 
         # Initialize validators
         self.csv_validator = CSVValidator(auto_correct=True)
+        self.timestamp_validator = TimestampValidator()
 
         # Initialize NLP modules
         logger.info("Initializing NLP modules...")
@@ -102,25 +112,69 @@ class MessageProcessor:
             }
         )
 
+        # Initialize temporal analyzer
+        self.temporal_analyzer = TemporalAnalyzer(window_size_hours=24)
+
+        # Initialize analysis result cache
+        if enable_cache:
+            try:
+                self.analysis_cache = create_analysis_cache()
+                if self.analysis_cache.redis.enabled:
+                    logger.info("✅ Analysis result caching enabled (Redis)")
+                else:
+                    logger.warning("⚠️  Redis unavailable - caching disabled")
+                    self.analysis_cache = None
+            except Exception as e:
+                logger.warning(f"Failed to initialize cache: {e}")
+                self.analysis_cache = None
+        else:
+            self.analysis_cache = None
+            logger.info("Analysis caching disabled")
+
         # Processing statistics
         self.stats = {
             "messages_processed": 0,
             "patterns_detected": 0,
-            "processing_time": 0
+            "processing_time": 0,
+            "cache_hits": 0,
+            "cache_misses": 0
         }
 
-    def process_file(self, input_file: str, output_dir: Optional[str] = None) -> ProcessingResult:
+    def process_file(self, input_file: str, output_dir: Optional[str] = None, use_cache: bool = True) -> ProcessingResult:
         """Process a CSV file through complete analysis pipeline
 
         Args:
             input_file: Path to input CSV file
             output_dir: Optional output directory for results
+            use_cache: Use cached results if available (default: True)
 
         Returns:
             ProcessingResult: Complete analysis results
         """
         start_time = time.time()
         logger.info(f"Starting processing of {input_file}")
+
+        # Check cache first (2-3x speedup for re-analysis)
+        if use_cache and self.analysis_cache:
+            logger.info("Checking analysis cache...")
+            cached_result = self.analysis_cache.get_cached_analysis(
+                input_file,
+                self.config.to_dict()
+            )
+
+            if cached_result and 'results' in cached_result:
+                logger.info("✅ Using cached analysis results!")
+                self.stats['cache_hits'] += 1
+
+                # Return cached result (reconstruct ProcessingResult)
+                return self._reconstruct_result_from_cache(
+                    cached_result['results'],
+                    input_file,
+                    output_dir
+                )
+            else:
+                logger.info("Cache miss - performing full analysis")
+                self.stats['cache_misses'] += 1
 
         # Create analysis run
         run_id = self.db.create_analysis_run(input_file, self.config.to_dict())
@@ -184,23 +238,28 @@ class MessageProcessor:
                 }
             )
 
-            # Pass 7: Pattern Storage
-            logger.info("Pass 7: Pattern storage and indexing")
+            # Pass 7: Temporal Analysis (with timestamp validation)
+            logger.info("Pass 7: Temporal pattern analysis")
+            temporal_results = self._perform_temporal_analysis(messages, risk_assessment)
+
+            # Pass 8: Pattern Storage
+            logger.info("Pass 8: Pattern storage and indexing")
             self._store_patterns(run_id, messages, risk_assessment)
 
-            # Pass 8: Generate Insights
-            logger.info("Pass 8: Generating insights and recommendations")
+            # Pass 9: Generate Insights
+            logger.info("Pass 9: Generating insights and recommendations")
             insights = self._generate_insights(
                 sentiment_results,
                 grooming_results,
                 manipulation_results,
                 deception_results,
                 intent_results,
-                risk_assessment
+                risk_assessment,
+                temporal_results
             )
 
-            # Pass 9: Export Results
-            logger.info("Pass 9: Exporting results")
+            # Pass 10: Export Results
+            logger.info("Pass 10: Exporting results")
             export_paths = self._export_results(
                 run_id,
                 {
@@ -210,6 +269,7 @@ class MessageProcessor:
                     'deception': deception_results,
                     'intent': intent_results,
                     'risk': risk_assessment,
+                    'temporal': temporal_results,
                     'insights': insights
                 },
                 output_dir
@@ -239,14 +299,43 @@ class MessageProcessor:
                 deception_results=deception_results,
                 intent_results=intent_results,
                 risk_assessment=risk_assessment,
+                temporal_results=temporal_results,
                 overall_risk_level=risk_assessment.get('overall_risk_assessment', {}).get('risk_level', 'unknown'),
                 primary_concerns=insights.get('primary_concerns', []),
                 key_findings=insights.get('key_findings', []),
                 recommendations=insights.get('recommendations', []),
+                cache_hit=False,
+                cache_stats=self.analysis_cache.get_stats() if self.analysis_cache else None,
                 json_output=export_paths.get('json'),
                 csv_output=export_paths.get('csv'),
                 pdf_output=export_paths.get('pdf')
             )
+
+            # Cache the complete analysis results for future re-use
+            if self.analysis_cache:
+                logger.info("Caching analysis results...")
+                self.analysis_cache.cache_analysis(
+                    input_file,
+                    self.config.to_dict(),
+                    {
+                        'analysis_run_id': run_id,
+                        'input_file': input_file,
+                        'message_count': len(messages),
+                        'speaker_count': len(df['sender'].unique()),
+                        'processing_time': processing_time,
+                        'sentiment_results': sentiment_results,
+                        'grooming_results': grooming_results,
+                        'manipulation_results': manipulation_results,
+                        'deception_results': deception_results,
+                        'intent_results': intent_results,
+                        'risk_assessment': risk_assessment,
+                        'temporal_results': temporal_results,
+                        'overall_risk_level': risk_assessment.get('overall_risk_assessment', {}).get('risk_level', 'unknown'),
+                        'primary_concerns': insights.get('primary_concerns', []),
+                        'key_findings': insights.get('key_findings', []),
+                        'recommendations': insights.get('recommendations', []),
+                    }
+                )
 
             logger.info(f"Processing completed in {processing_time:.2f} seconds")
             return result
@@ -259,6 +348,136 @@ class MessageProcessor:
                 error_message=str(e)
             )
             raise
+
+    def _reconstruct_result_from_cache(self, cached_data: Dict, input_file: str,
+                                        output_dir: Optional[str]) -> ProcessingResult:
+        """Reconstruct ProcessingResult from cached data
+
+        Args:
+            cached_data: Cached analysis results
+            input_file: Input file path
+            output_dir: Output directory
+
+        Returns:
+            ProcessingResult: Reconstructed result object
+        """
+        # Re-export if output_dir specified
+        export_paths = {}
+        if output_dir:
+            export_paths = self._export_results(
+                cached_data.get('analysis_run_id', 0),
+                {
+                    'sentiment': cached_data.get('sentiment_results', {}),
+                    'grooming': cached_data.get('grooming_results', {}),
+                    'manipulation': cached_data.get('manipulation_results', {}),
+                    'deception': cached_data.get('deception_results', {}),
+                    'intent': cached_data.get('intent_results', {}),
+                    'risk': cached_data.get('risk_assessment', {}),
+                    'temporal': cached_data.get('temporal_results', {}),
+                    'insights': {
+                        'primary_concerns': cached_data.get('primary_concerns', []),
+                        'key_findings': cached_data.get('key_findings', []),
+                        'recommendations': cached_data.get('recommendations', [])
+                    }
+                },
+                output_dir
+            )
+
+        return ProcessingResult(
+            analysis_run_id=cached_data.get('analysis_run_id', 0),
+            input_file=input_file,
+            message_count=cached_data.get('message_count', 0),
+            speaker_count=cached_data.get('speaker_count', 0),
+            processing_time=0.001,  # Cache retrieval is nearly instant
+            sentiment_results=cached_data.get('sentiment_results', {}),
+            grooming_results=cached_data.get('grooming_results', {}),
+            manipulation_results=cached_data.get('manipulation_results', {}),
+            deception_results=cached_data.get('deception_results', {}),
+            intent_results=cached_data.get('intent_results', {}),
+            risk_assessment=cached_data.get('risk_assessment', {}),
+            temporal_results=cached_data.get('temporal_results'),
+            overall_risk_level=cached_data.get('overall_risk_level', 'unknown'),
+            primary_concerns=cached_data.get('primary_concerns', []),
+            key_findings=cached_data.get('key_findings', []),
+            recommendations=cached_data.get('recommendations', []),
+            cache_hit=True,
+            cache_stats=self.analysis_cache.get_stats() if self.analysis_cache else None,
+            json_output=export_paths.get('json'),
+            csv_output=export_paths.get('csv'),
+            pdf_output=export_paths.get('pdf')
+        )
+
+    def _perform_temporal_analysis(self, messages: List[Dict],
+                                   risk_assessment: Dict) -> Dict[str, Any]:
+        """Perform temporal pattern analysis with timestamp validation
+
+        Args:
+            messages: List of messages
+            risk_assessment: Risk assessment results
+
+        Returns:
+            Dict: Temporal analysis results
+        """
+        temporal_results = {
+            'enabled': False,
+            'validation': None,
+            'analysis': None
+        }
+
+        try:
+            # First, validate timestamps
+            validation = self.timestamp_validator.validate_timestamps(messages)
+            temporal_results['validation'] = validation.__dict__
+
+            if validation.can_use_temporal_analysis:
+                logger.info("✅ Timestamps valid - performing temporal analysis")
+                logger.info(f"   Coverage: {validation.coverage_percentage:.1f}%")
+                logger.info(f"   Timespan: {validation.timespan_days:.1f} days")
+
+                # Enrich messages with risk scores for temporal analysis
+                enriched_messages = []
+                for i, msg in enumerate(messages):
+                    enriched_msg = msg.copy()
+
+                    # Add timestamp from date/time fields
+                    if 'date' in msg and 'time' in msg:
+                        try:
+                            from datetime import datetime
+                            date_str = f"{msg['date']} {msg['time']}"
+                            enriched_msg['timestamp'] = pd.to_datetime(date_str)
+                        except:
+                            pass
+
+                    # Add risk score from risk assessment
+                    if i < len(risk_assessment.get('per_message_risks', [])):
+                        risk = risk_assessment['per_message_risks'][i]
+                        enriched_msg['risk_score'] = getattr(risk, 'overall_risk', 0)
+                        enriched_msg['risk_analysis'] = {'overall_risk': getattr(risk, 'overall_risk', 0)}
+
+                    enriched_messages.append(enriched_msg)
+
+                # Perform temporal analysis
+                temporal_analysis = self.temporal_analyzer.analyze_temporal_patterns(enriched_messages)
+                temporal_results['analysis'] = temporal_analysis.__dict__
+                temporal_results['enabled'] = True
+
+                # Log findings
+                if temporal_analysis.is_escalating:
+                    logger.warning(f"⚠️  ESCALATION DETECTED: Score {temporal_analysis.escalation_score:.2f}")
+                if temporal_analysis.frequency_increasing:
+                    logger.warning(f"⚠️  Frequency increased by {temporal_analysis.frequency_change_percent:.0f}%")
+
+            else:
+                logger.warning("⚠️  Timestamps insufficient for temporal analysis")
+                logger.info(f"   Issues: {len(validation.issues)}")
+                for issue in validation.issues[:3]:
+                    logger.info(f"     - {issue}")
+
+        except Exception as e:
+            logger.error(f"Temporal analysis failed: {e}")
+            temporal_results['error'] = str(e)
+
+        return temporal_results
 
     def _dataframe_to_messages(self, df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Convert dataframe to message list
@@ -439,11 +658,11 @@ class MessageProcessor:
             logger.info(f"Stored {len(patterns)} patterns in database")
 
     def _generate_insights(self, sentiment: Dict, grooming: Dict, manipulation: Dict,
-                          deception: Dict, intent: Dict, risk: Dict) -> Dict[str, Any]:
+                          deception: Dict, intent: Dict, risk: Dict, temporal: Dict = None) -> Dict[str, Any]:
         """Generate key insights and recommendations
 
         Args:
-            Various analysis results
+            Various analysis results including temporal
 
         Returns:
             Dict: Insights and recommendations
@@ -489,6 +708,28 @@ class MessageProcessor:
         # Key findings from intent
         if intent.get('conversation_dynamic'):
             insights['key_findings'].append(f"Conversation dynamic: {intent['conversation_dynamic']}")
+
+        # Key findings from temporal analysis
+        if temporal and temporal.get('enabled') and temporal.get('analysis'):
+            temp_analysis = temporal['analysis']
+
+            if temp_analysis.get('is_escalating'):
+                insights['key_findings'].append(
+                    f"⚠️  Risk escalation detected (score: {temp_analysis.get('escalation_score', 0):.2f})"
+                )
+                insights['primary_concerns'].append("Risk escalation over time")
+
+            if temp_analysis.get('frequency_increasing'):
+                insights['key_findings'].append(
+                    f"Message frequency increased by {temp_analysis.get('frequency_change_percent', 0):.0f}%"
+                )
+
+            if temp_analysis.get('is_progressing_through_stages'):
+                insights['key_findings'].append("Progression through concerning behavioral stages detected")
+
+            # Add temporal warnings
+            if temp_analysis.get('warnings'):
+                insights['recommendations'].extend(temp_analysis['warnings'][:3])
 
         # Compile recommendations
         all_recommendations = set()
