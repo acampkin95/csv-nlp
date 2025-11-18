@@ -46,15 +46,10 @@ class UnifiedEnhancedMessageProcessor(UnifiedProcessor):
         self.use_postgresql = use_postgresql
 
         if use_postgresql:
-            # Initialize PostgreSQL adapter
-            db_config = DatabaseConfig(
-                host="acdev.host",
-                database="messagestore",
-                user="msgprocess",
-                password="DHifde93jes9dk"
-            )
+            # Initialize PostgreSQL adapter with secure environment-based configuration
+            db_config = DatabaseConfig()
             self.db = PostgreSQLAdapter(db_config)
-            logger.info("Using PostgreSQL backend at acdev.host")
+            logger.info(f"Using PostgreSQL backend at {db_config.host}")
         else:
             logger.info("Using SQLite backend")
 
@@ -109,15 +104,10 @@ class EnhancedMessageProcessor(MessageProcessor):
         self.use_postgresql = use_postgresql
 
         if use_postgresql:
-            # Initialize PostgreSQL adapter
-            db_config = DatabaseConfig(
-                host="acdev.host",
-                database="messagestore",
-                user="msgprocess",
-                password="DHifde93jes9dk"
-            )
+            # Initialize PostgreSQL adapter with secure environment-based configuration
+            db_config = DatabaseConfig()
             self.db = PostgreSQLAdapter(db_config)
-            logger.info("Using PostgreSQL backend at acdev.host")
+            logger.info(f"Using PostgreSQL backend at {db_config.host}")
         else:
             # Fall back to SQLite
             from src.db.database import DatabaseAdapter
