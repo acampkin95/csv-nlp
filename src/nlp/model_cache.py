@@ -174,11 +174,26 @@ def compile_regex_patterns(patterns_dict: Dict) -> Dict:
             for pattern_item in patterns:
                 try:
                     if isinstance(pattern_item, dict) and 'regex' in pattern_item:
-                        # Format: {"regex": "...", "severity": 0.8}
+                        # Format: {"regex": "...", "severity": 0.8, "description": "..."}
+                        # Extended format: add "substance", "tactic", "violation" for specific modules
                         regex = re.compile(pattern_item['regex'], re.IGNORECASE)
                         severity = pattern_item.get('severity', 0.5)
                         description = pattern_item.get('description', '')
-                        compiled[category].append((regex, severity, description))
+
+                        # Check for extended fields (substance, tactic, violation)
+                        substance = pattern_item.get('substance', '')
+                        tactic = pattern_item.get('tactic', '')
+                        violation = pattern_item.get('violation', '')
+
+                        # Store with all available fields
+                        if substance:
+                            compiled[category].append((regex, severity, substance, description))
+                        elif tactic:
+                            compiled[category].append((regex, severity, tactic, description))
+                        elif violation:
+                            compiled[category].append((regex, severity, violation, description))
+                        else:
+                            compiled[category].append((regex, severity, description))
                     elif isinstance(pattern_item, str):
                         # Format: raw regex string
                         regex = re.compile(pattern_item, re.IGNORECASE)
