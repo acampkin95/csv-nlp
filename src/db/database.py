@@ -584,8 +584,8 @@ class DatabaseAdapter:
             for table in tables:
                 cursor.execute(f"DELETE FROM {table}")
 
-            # Reset autoincrement counters
+            # Reset autoincrement counters - use parameterized query for security
             for table in tables:
-                cursor.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
 
             logger.warning("All data cleared from database")

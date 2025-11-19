@@ -6,6 +6,7 @@ Provides high-performance interface to PostgreSQL with JSONB optimization
 import psycopg2
 from psycopg2.extras import RealDictCursor, Json
 from psycopg2.pool import ThreadedConnectionPool
+from psycopg2 import sql
 import json
 import hashlib
 from pathlib import Path
@@ -13,23 +14,39 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any, Tuple
 from contextlib import contextmanager
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import uuid
+import os
+import re
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class DatabaseConfig:
-    """PostgreSQL connection configuration"""
-    host: str = "acdev.host"
-    port: int = 5432
-    database: str = "messagestore"
-    user: str = "msgprocess"
-    password: str = "DHifde93jes9dk"
-    schema: str = "message_processor"
-    min_connections: int = 2
-    max_connections: int = 10
+    """PostgreSQL connection configuration
+
+    All values loaded from environment variables for security.
+    See .env.example for configuration template.
+    """
+    host: str = field(default_factory=lambda: os.environ.get('POSTGRES_HOST', ''))
+    port: int = field(default_factory=lambda: int(os.environ.get('POSTGRES_PORT', '5432')))
+    database: str = field(default_factory=lambda: os.environ.get('POSTGRES_DB', ''))
+    user: str = field(default_factory=lambda: os.environ.get('POSTGRES_USER', ''))
+    password: str = field(default_factory=lambda: os.environ.get('POSTGRES_PASSWORD', ''))
+    schema: str = field(default_factory=lambda: os.environ.get('POSTGRES_SCHEMA', 'message_processor'))
+    min_connections: int = field(default_factory=lambda: int(os.environ.get('POSTGRES_MIN_CONN', '2')))
+    max_connections: int = field(default_factory=lambda: int(os.environ.get('POSTGRES_MAX_CONN', '10')))
+
+    def __post_init__(self):
+        """Validate required configuration"""
+        required = ['host', 'database', 'user', 'password']
+        missing = [f for f in required if not getattr(self, f)]
+        if missing:
+            raise RuntimeError(
+                f"Missing required database configuration: {', '.join(missing)}. "
+                f"Please set environment variables: {', '.join('POSTGRES_' + f.upper() for f in missing)}"
+            )
 
 
 class PostgreSQLAdapter:
@@ -47,8 +64,11 @@ class PostgreSQLAdapter:
         self._init_schema()
 
     def _init_connection_pool(self):
-        """Initialize connection pool"""
+        """Initialize connection pool with validated configuration"""
         try:
+            # Validate schema name before using in options
+            validated_schema = self._validate_schema_name(self.config.schema)
+
             self.pool = ThreadedConnectionPool(
                 self.config.min_connections,
                 self.config.max_connections,
@@ -57,23 +77,60 @@ class PostgreSQLAdapter:
                 database=self.config.database,
                 user=self.config.user,
                 password=self.config.password,
-                options=f'-c search_path={self.config.schema},public'
+                options=f'-c search_path={validated_schema},public'
             )
-            logger.info(f"Connected to PostgreSQL at {self.config.host}")
+            logger.info(f"Connected to PostgreSQL at {self.config.host}:{self.config.port}")
         except psycopg2.Error as e:
             logger.error(f"Failed to connect to PostgreSQL: {e}")
             raise
+        except ValueError as e:
+            logger.error(f"Invalid database configuration: {e}")
+            raise
+
+    def _validate_schema_name(self, schema: str) -> str:
+        """Validate schema name against strict whitelist
+
+        Args:
+            schema: Schema name to validate
+
+        Returns:
+            str: Validated schema name
+
+        Raises:
+            ValueError: If schema name is invalid
+        """
+        if not schema:
+            raise ValueError("Schema name cannot be empty")
+        if not re.match(r'^[a-z_][a-z0-9_]*$', schema):
+            raise ValueError(
+                f"Invalid schema name: '{schema}'. "
+                f"Must start with letter/underscore and contain only lowercase letters, numbers, underscores"
+            )
+        if len(schema) > 63:  # PostgreSQL identifier limit
+            raise ValueError(f"Schema name too long: '{schema}' (max 63 characters)")
+        return schema
 
     def _init_schema(self):
-        """Initialize database schema"""
+        """Initialize database schema with SQL injection protection"""
         schema_path = Path(__file__).parent / "postgresql_schema.sql"
         if schema_path.exists():
             try:
+                # Validate schema name to prevent SQL injection
+                validated_schema = self._validate_schema_name(self.config.schema)
+
                 with self.get_connection() as conn:
                     with conn.cursor() as cursor:
-                        # Create schema if not exists
-                        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {self.config.schema}")
-                        cursor.execute(f"SET search_path TO {self.config.schema}, public")
+                        # Create schema if not exists - use sql.Identifier for safety
+                        cursor.execute(
+                            sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                                sql.Identifier(validated_schema)
+                            )
+                        )
+                        cursor.execute(
+                            sql.SQL("SET search_path TO {}, public").format(
+                                sql.Identifier(validated_schema)
+                            )
+                        )
 
                         # Read and execute schema
                         with open(schema_path, 'r') as f:
@@ -81,9 +138,10 @@ class PostgreSQLAdapter:
                             cursor.execute(schema_sql)
 
                         conn.commit()
-                        logger.info("Database schema initialized")
+                        logger.info(f"Database schema '{validated_schema}' initialized")
             except Exception as e:
                 logger.error(f"Failed to initialize schema: {e}")
+                raise
 
     @contextmanager
     def get_connection(self):
@@ -168,16 +226,16 @@ class PostgreSQLAdapter:
                 return session_id
 
     def _create_csv_table(self, conn, table_name: str, df):
-        """Create dedicated table for CSV data
+        """Create dedicated table for CSV data with SQL injection protection
 
         Args:
             conn: Database connection
-            table_name: Table name
+            table_name: Table name (internally generated, validated)
             df: DataFrame with data
         """
         with conn.cursor() as cursor:
-            # Build CREATE TABLE statement
-            columns = []
+            # Build column definitions using safe identifiers
+            column_defs = []
             for col in df.columns:
                 # Determine PostgreSQL type
                 dtype = str(df[col].dtype)
@@ -192,22 +250,35 @@ class PostgreSQLAdapter:
                 else:
                     pg_type = 'TEXT'
 
-                columns.append(f"{self._sanitize_column_name(col)} {pg_type}")
+                sanitized_col = self._sanitize_column_name(col)
+                column_defs.append(sql.SQL("{} {}").format(
+                    sql.Identifier(sanitized_col),
+                    sql.SQL(pg_type)
+                ))
 
-            create_sql = f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
+            # Create table using psycopg2.sql for safe identifier quoting
+            create_sql = sql.SQL("""
+                CREATE TABLE IF NOT EXISTS {} (
                     id SERIAL PRIMARY KEY,
                     import_session_id UUID,
-                    {', '.join(columns)},
+                    {},
                     raw_data JSONB,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
-            """
+            """).format(
+                sql.Identifier(table_name),
+                sql.SQL(', ').join(column_defs)
+            )
 
             cursor.execute(create_sql)
 
-            # Create indexes
-            cursor.execute(f"CREATE INDEX idx_{table_name}_session ON {table_name}(import_session_id)")
+            # Create indexes using safe identifiers
+            cursor.execute(
+                sql.SQL("CREATE INDEX {} ON {}(import_session_id)").format(
+                    sql.Identifier(f"idx_{table_name}_session"),
+                    sql.Identifier(table_name)
+                )
+            )
 
     def _sanitize_column_name(self, name: str) -> str:
         """Sanitize column name for PostgreSQL
@@ -228,26 +299,27 @@ class PostgreSQLAdapter:
         return sanitized or "column"
 
     def _insert_csv_data(self, conn, table_name: str, session_id: str, df):
-        """Insert CSV data into dedicated table using batch operations
+        """Insert CSV data into dedicated table using batch operations with SQL injection protection
 
         Args:
             conn: Database connection
-            table_name: Table name
+            table_name: Table name (internally generated, validated)
             session_id: Import session ID
             df: DataFrame with data
         """
         import psycopg2.extras
 
         with conn.cursor() as cursor:
-            # Prepare columns
+            # Prepare columns with safe identifiers
             columns = [self._sanitize_column_name(col) for col in df.columns]
-            columns_str = ', '.join(columns)
+            column_identifiers = [sql.Identifier(col) for col in columns]
 
-            insert_sql = f"""
-                INSERT INTO {table_name}
-                (import_session_id, {columns_str}, raw_data)
-                VALUES (%s, {', '.join(['%s'] * len(columns))}, %s)
-            """
+            # Build INSERT statement using psycopg2.sql
+            insert_sql = sql.SQL("INSERT INTO {} (import_session_id, {}, raw_data) VALUES (%s, {}, %s)").format(
+                sql.Identifier(table_name),
+                sql.SQL(', ').join(column_identifiers),
+                sql.SQL(', ').join([sql.Placeholder()] * len(columns))
+            )
 
             # Prepare all rows for batch insert (100x faster than per-row)
             rows = []
@@ -469,7 +541,21 @@ class PostgreSQLAdapter:
 
         Returns:
             List of message dictionaries
+
+        Raises:
+            ValueError: If limit is invalid
         """
+        # SECURITY FIX: Validate limit parameter
+        if limit is not None:
+            try:
+                limit_int = int(limit)
+                if limit_int < 1 or limit_int > 100000:
+                    raise ValueError(f"Limit out of range: {limit_int} (must be 1-100000)")
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid limit value: {limit}") from e
+        else:
+            limit_int = None
+
         with self.get_connection() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = "SELECT * FROM messages_master WHERE 1=1"
@@ -481,8 +567,8 @@ class PostgreSQLAdapter:
 
                 query += " ORDER BY timestamp"
 
-                if limit:
-                    query += f" LIMIT {limit}"
+                if limit_int:
+                    query += f" LIMIT {limit_int}"
 
                 cursor.execute(query, params)
                 return cursor.fetchall()
@@ -609,15 +695,26 @@ class PostgreSQLAdapter:
     # ==========================================
 
     def create_timeline_aggregation(self, csv_session_id: str, window_size: str = 'day'):
-        """Create timeline aggregations for performance
+        """Create timeline aggregations for performance with SQL injection protection
 
         Args:
             csv_session_id: CSV session ID
             window_size: Aggregation window (hour, day, week, month)
+
+        Raises:
+            ValueError: If window_size is not in valid set
         """
+        # CRITICAL FIX: Whitelist validation to prevent SQL injection
+        valid_windows = {'hour', 'day', 'week', 'month'}
+        if window_size not in valid_windows:
+            raise ValueError(
+                f"Invalid window_size: '{window_size}'. "
+                f"Must be one of: {', '.join(sorted(valid_windows))}"
+            )
+
         with self.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Define window truncation based on size
+                # Define window truncation based on size (safe after validation)
                 trunc_map = {
                     'hour': 'hour',
                     'day': 'day',
@@ -625,8 +722,9 @@ class PostgreSQLAdapter:
                     'month': 'month'
                 }
 
-                trunc = trunc_map.get(window_size, 'day')
+                trunc = trunc_map[window_size]  # Safe - already validated
 
+                # Now safe to use in SQL since window_size is validated against whitelist
                 cursor.execute(f"""
                     INSERT INTO timeline_aggregations (csv_session_id, window_start, window_end, window_size, metrics)
                     SELECT

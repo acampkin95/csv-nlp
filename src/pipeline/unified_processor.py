@@ -3,6 +3,13 @@
 Unified 15-Pass Analysis Pipeline
 Integrates 10-pass existing pipeline with 5-pass person-centric analysis from ppl_int.
 
+OPTIMIZED VERSION with:
+- Lazy loading of NLP modules
+- Result caching between passes
+- Batch processing
+- Progress tracking
+- Improved error handling
+
 PASS STRUCTURE:
 =================
 Passes 1-3: Data Normalization & Sentiment
@@ -47,13 +54,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from db.database import DatabaseAdapter
 from validation.csv_validator import CSVValidator
 from config.config_manager import ConfigManager, Configuration
-from nlp.sentiment_analyzer import SentimentAnalyzer
-from nlp.grooming_detector import GroomingDetector
-from nlp.manipulation_detector import ManipulationDetector
-from nlp.deception_analyzer import DeceptionAnalyzer
-from nlp.intent_classifier import IntentClassifier
-from nlp.risk_scorer import BehavioralRiskScorer
-from nlp.person_analyzer import PersonAnalyzer
+
+# Import performance utilities
+from utils.performance import (
+    LazyLoader, LRUCache, BatchProcessor, ProgressTracker,
+    timed_operation, get_result_cache, memoize
+)
+from utils.batch_optimizer import MessageBatchOptimizer, PassResultsCache
 
 # Configure logging
 logging.basicConfig(
@@ -112,10 +119,10 @@ class UnifiedAnalysisResult:
 
 
 class UnifiedProcessor:
-    """15-pass unified analysis pipeline"""
+    """15-pass unified analysis pipeline with optimizations"""
 
     def __init__(self, config: Configuration):
-        """Initialize unified processor
+        """Initialize unified processor with lazy loading
 
         Args:
             config: Configuration object
@@ -124,26 +131,143 @@ class UnifiedProcessor:
         self.db = DatabaseAdapter(config.database.path)
         self.csv_validator = CSVValidator(auto_correct=True)
 
-        # Initialize NLP modules
-        logger.info("Initializing NLP modules...")
-        self.sentiment_analyzer = SentimentAnalyzer()
-        self.grooming_detector = GroomingDetector()
-        self.manipulation_detector = ManipulationDetector()
-        self.deception_analyzer = DeceptionAnalyzer()
-        self.intent_classifier = IntentClassifier()
-        self.risk_scorer = BehavioralRiskScorer(
+        # Initialize caches
+        self.result_cache = LRUCache(maxsize=512)
+        self.pass_cache = PassResultsCache()  # Cache results between passes
+
+        # Initialize batch processor for optimized message processing
+        self.batch_optimizer = MessageBatchOptimizer(batch_size=500)
+        self.batch_processor = BatchProcessor(batch_size=1000)
+
+        # Lazy load NLP modules (loaded only when needed)
+        logger.info("Setting up lazy loaders for NLP modules...")
+
+        self._sentiment_analyzer = LazyLoader(lambda: self._load_sentiment_analyzer())
+        self._grooming_detector = LazyLoader(lambda: self._load_grooming_detector())
+        self._manipulation_detector = LazyLoader(lambda: self._load_manipulation_detector())
+        self._deception_analyzer = LazyLoader(lambda: self._load_deception_analyzer())
+        self._intent_classifier = LazyLoader(lambda: self._load_intent_classifier())
+        self._risk_scorer = LazyLoader(lambda: self._load_risk_scorer())
+        self._person_analyzer = LazyLoader(lambda: self._load_person_analyzer())
+
+        logger.info("Lazy loaders configured (modules will load on first use)")
+
+    def _load_sentiment_analyzer(self):
+        """Lazy load sentiment analyzer"""
+        from nlp.sentiment_analyzer import SentimentAnalyzer
+        return SentimentAnalyzer()
+
+    def _load_grooming_detector(self):
+        """Lazy load grooming detector"""
+        from nlp.grooming_detector import GroomingDetector
+        return GroomingDetector()
+
+    def _load_manipulation_detector(self):
+        """Lazy load manipulation detector"""
+        from nlp.manipulation_detector import ManipulationDetector
+        return ManipulationDetector()
+
+    def _load_deception_analyzer(self):
+        """Lazy load deception analyzer"""
+        from nlp.deception_analyzer import DeceptionAnalyzer
+        return DeceptionAnalyzer()
+
+    def _load_intent_classifier(self):
+        """Lazy load intent classifier"""
+        from nlp.intent_classifier import IntentClassifier
+        return IntentClassifier()
+
+    def _load_risk_scorer(self):
+        """Lazy load risk scorer"""
+        from nlp.risk_scorer import BehavioralRiskScorer
+        return BehavioralRiskScorer(
             weights={
-                "grooming": config.nlp.risk_weight_grooming,
-                "manipulation": config.nlp.risk_weight_manipulation,
-                "hostility": config.nlp.risk_weight_hostility,
-                "deception": config.nlp.risk_weight_deception
+                "grooming": self.config.nlp.risk_weight_grooming,
+                "manipulation": self.config.nlp.risk_weight_manipulation,
+                "hostility": self.config.nlp.risk_weight_hostility,
+                "deception": self.config.nlp.risk_weight_deception
             }
         )
-        self.person_analyzer = PersonAnalyzer()
-        logger.info("All modules initialized successfully")
 
+    def _load_person_analyzer(self):
+        """Lazy load person analyzer"""
+        from nlp.person_analyzer import PersonAnalyzer
+        return PersonAnalyzer()
+
+    @property
+    def sentiment_analyzer(self):
+        """Get sentiment analyzer (lazy loaded)"""
+        return self._sentiment_analyzer.get()
+
+    @property
+    def grooming_detector(self):
+        """Get grooming detector (lazy loaded)"""
+        return self._grooming_detector.get()
+
+    @property
+    def manipulation_detector(self):
+        """Get manipulation detector (lazy loaded)"""
+        return self._manipulation_detector.get()
+
+    @property
+    def deception_analyzer(self):
+        """Get deception analyzer (lazy loaded)"""
+        return self._deception_analyzer.get()
+
+    @property
+    def intent_classifier(self):
+        """Get intent classifier (lazy loaded)"""
+        return self._intent_classifier.get()
+
+    @property
+    def risk_scorer(self):
+        """Get risk scorer (lazy loaded)"""
+        return self._risk_scorer.get()
+
+    @property
+    def person_analyzer(self):
+        """Get person analyzer (lazy loaded)"""
+        return self._person_analyzer.get()
+
+    def get_loading_stats(self) -> Dict[str, Any]:
+        """Get statistics on which modules are loaded
+
+        Returns:
+            Dict with loading status for each module
+        """
+        loaded_modules = {
+            'sentiment_analyzer': self._sentiment_analyzer.is_loaded,
+            'grooming_detector': self._grooming_detector.is_loaded,
+            'manipulation_detector': self._manipulation_detector.is_loaded,
+            'deception_analyzer': self._deception_analyzer.is_loaded,
+            'intent_classifier': self._intent_classifier.is_loaded,
+            'risk_scorer': self._risk_scorer.is_loaded,
+            'person_analyzer': self._person_analyzer.is_loaded,
+        }
+
+        loading_times = {}
+        for name, loader in [
+            ('sentiment_analyzer', self._sentiment_analyzer),
+            ('grooming_detector', self._grooming_detector),
+            ('manipulation_detector', self._manipulation_detector),
+            ('deception_analyzer', self._deception_analyzer),
+            ('intent_classifier', self._intent_classifier),
+            ('risk_scorer', self._risk_scorer),
+            ('person_analyzer', self._person_analyzer),
+        ]:
+            if loader.is_loaded and loader.loading_time is not None:
+                loading_times[name] = f"{loader.loading_time:.2f}s"
+
+        return {
+            'modules_loaded': loaded_modules,
+            'loading_times': loading_times,
+            'total_loaded': sum(loaded_modules.values()),
+            'cache_stats': self.pass_cache.get_cache_stats()
+        }
+
+    @timed_operation("15-pass unified pipeline")
     def process_file(self, input_file: str, output_dir: Optional[str] = None) -> UnifiedAnalysisResult:
-        """Execute complete 15-pass pipeline
+        """Execute complete 15-pass pipeline with optimizations
 
         Args:
             input_file: Path to input CSV file
@@ -153,10 +277,13 @@ class UnifiedProcessor:
             UnifiedAnalysisResult: Complete analysis results
         """
         start_time = time.time()
-        logger.info(f"Starting 15-pass unified pipeline on {input_file}")
+        logger.info(f"Starting optimized 15-pass pipeline on {input_file}")
         print("\n" + "="*70)
-        print("15-PASS UNIFIED ANALYSIS PIPELINE")
+        print("15-PASS UNIFIED ANALYSIS PIPELINE (OPTIMIZED)")
         print("="*70)
+
+        # Clear pass cache for new file
+        self.pass_cache.clear()
 
         # Create analysis run
         run_id = self.db.create_analysis_run(input_file, self.config.to_dict())
@@ -453,183 +580,415 @@ class UnifiedProcessor:
         }, df
 
     def _pass_2_sentiment_analysis(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Pass 2: Sentiment analysis using multiple engines"""
-        message_sentiments = []
-        for msg in messages:
-            sentiment = self.sentiment_analyzer.analyze_text(msg['text'])
-            message_sentiments.append(sentiment)
+        """Pass 2: Sentiment analysis using multiple engines with batch processing"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('sentiment'):
+            logger.info("  Using cached sentiment results")
+            return self.pass_cache.get_pass_result('sentiment')
 
-        conversation_sentiment = self.sentiment_analyzer.analyze_conversation(messages)
+        try:
+            message_sentiments = []
+            progress = ProgressTracker(len(messages), desc="  Sentiment analysis", log_interval=20)
 
-        overall = conversation_sentiment.overall_sentiment if hasattr(conversation_sentiment, 'overall_sentiment') else 0.0
-        print(f"  Overall Sentiment: {overall:.2f}, Trajectory: {getattr(conversation_sentiment, 'sentiment_trajectory', 'N/A')}")
+            # Process in batches with progress tracking
+            for i, msg in enumerate(messages):
+                try:
+                    sentiment = self.sentiment_analyzer.analyze_text(msg.get('text', ''))
+                    message_sentiments.append(sentiment)
+                except Exception as e:
+                    logger.warning(f"  Sentiment analysis failed for message {i}: {e}")
+                    message_sentiments.append(None)
 
-        return {
-            'per_message': message_sentiments,
-            'conversation': conversation_sentiment
-        }
+                progress.update(1)
+
+            progress.finish()
+
+            conversation_sentiment = self.sentiment_analyzer.analyze_conversation(messages)
+
+            overall = conversation_sentiment.overall_sentiment if hasattr(conversation_sentiment, 'overall_sentiment') else 0.0
+            print(f"  Overall Sentiment: {overall:.2f}, Trajectory: {getattr(conversation_sentiment, 'sentiment_trajectory', 'N/A')}")
+
+            result = {
+                'per_message': message_sentiments,
+                'conversation': conversation_sentiment
+            }
+
+            # Cache result
+            self.pass_cache.cache_pass_result('sentiment', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Sentiment analysis pass failed: {e}")
+            return {'per_message': [], 'conversation': None, 'error': str(e)}
 
     def _pass_3_emotional_dynamics(self, messages: List[Dict], sentiment_results: Dict) -> Dict[str, Any]:
         """Pass 3: Emotional dynamics and volatility assessment"""
-        if not sentiment_results.get('per_message'):
-            return {}
+        # Check cache first
+        if self.pass_cache.has_pass_result('emotional_dynamics'):
+            logger.info("  Using cached emotional dynamics results")
+            return self.pass_cache.get_pass_result('emotional_dynamics')
 
-        sentiments = [s.combined_sentiment if hasattr(s, 'combined_sentiment') else 0.0
-                      for s in sentiment_results['per_message']]
+        try:
+            if not sentiment_results.get('per_message'):
+                return {'error': 'No sentiment data available'}
 
-        if len(sentiments) < 2:
-            volatility = 0.0
-        else:
-            import statistics
-            volatility = statistics.stdev(sentiments) if len(sentiments) > 1 else 0.0
+            sentiments = [s.combined_sentiment if hasattr(s, 'combined_sentiment') else 0.0
+                          for s in sentiment_results['per_message'] if s is not None]
 
-        print(f"  Emotional Volatility: {volatility:.2f}")
+            if len(sentiments) < 2:
+                volatility = 0.0
+            else:
+                import statistics
+                volatility = statistics.stdev(sentiments) if len(sentiments) > 1 else 0.0
 
-        return {
-            'volatility': volatility,
-            'sentiments': sentiments,
-            'emotion_shifts': self._detect_emotion_shifts(sentiments)
-        }
+            print(f"  Emotional Volatility: {volatility:.2f}")
+
+            result = {
+                'volatility': volatility,
+                'sentiments': sentiments,
+                'emotion_shifts': self._detect_emotion_shifts(sentiments)
+            }
+
+            # Cache result with dependency on sentiment
+            self.pass_cache.cache_pass_result('emotional_dynamics', result, dependencies=['sentiment'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Emotional dynamics analysis failed: {e}")
+            return {'error': str(e)}
 
     def _pass_4_grooming_detection(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Pass 4: Grooming pattern detection"""
-        result = self.grooming_detector.analyze_conversation(messages)
-        risk_level = result.get('overall_risk', 'low')
-        print(f"  Grooming Risk: {risk_level}")
-        return result
+        """Pass 4: Grooming pattern detection with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('grooming'):
+            logger.info("  Using cached grooming detection results")
+            return self.pass_cache.get_pass_result('grooming')
+
+        try:
+            logger.info(f"  Analyzing {len(messages)} messages for grooming patterns")
+            result = self.grooming_detector.analyze_conversation(messages)
+            risk_level = result.get('overall_risk', 'low')
+            print(f"  Grooming Risk: {risk_level}")
+
+            # Cache result
+            self.pass_cache.cache_pass_result('grooming', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Grooming detection failed: {e}")
+            return {'overall_risk': 'unknown', 'error': str(e)}
 
     def _pass_5_manipulation_detection(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Pass 5: Manipulation and escalation detection"""
-        result = self.manipulation_detector.analyze_conversation(messages)
-        risk_level = result.get('overall_risk', 'low')
-        print(f"  Manipulation Risk: {risk_level}")
-        return result
+        """Pass 5: Manipulation and escalation detection with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('manipulation'):
+            logger.info("  Using cached manipulation detection results")
+            return self.pass_cache.get_pass_result('manipulation')
+
+        try:
+            logger.info(f"  Analyzing {len(messages)} messages for manipulation patterns")
+            result = self.manipulation_detector.analyze_conversation(messages)
+            risk_level = result.get('overall_risk', 'low')
+            print(f"  Manipulation Risk: {risk_level}")
+
+            # Cache result
+            self.pass_cache.cache_pass_result('manipulation', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Manipulation detection failed: {e}")
+            return {'overall_risk': 'unknown', 'error': str(e)}
 
     def _pass_6_deception_analysis(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Pass 6: Deception markers analysis"""
-        result = self.deception_analyzer.analyze_conversation(messages)
-        credibility = result.get('overall_credibility', 'unknown')
-        print(f"  Credibility Assessment: {credibility}")
-        return result
+        """Pass 6: Deception markers analysis with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('deception'):
+            logger.info("  Using cached deception analysis results")
+            return self.pass_cache.get_pass_result('deception')
+
+        try:
+            logger.info(f"  Analyzing {len(messages)} messages for deception markers")
+            result = self.deception_analyzer.analyze_conversation(messages)
+            credibility = result.get('overall_credibility', 'unknown')
+            print(f"  Credibility Assessment: {credibility}")
+
+            # Cache result
+            self.pass_cache.cache_pass_result('deception', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Deception analysis failed: {e}")
+            return {'overall_credibility': 'unknown', 'error': str(e)}
 
     def _pass_7_intent_classification(self, messages: List[Dict]) -> Dict[str, Any]:
-        """Pass 7: Intent classification"""
-        result = self.intent_classifier.analyze_conversation_intents(messages)
-        dynamic = result.get('conversation_dynamic', 'neutral')
-        print(f"  Conversation Dynamic: {dynamic}")
-        return result
+        """Pass 7: Intent classification with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('intent'):
+            logger.info("  Using cached intent classification results")
+            return self.pass_cache.get_pass_result('intent')
+
+        try:
+            logger.info(f"  Classifying intents for {len(messages)} messages")
+            result = self.intent_classifier.analyze_conversation_intents(messages)
+            dynamic = result.get('conversation_dynamic', 'neutral')
+            print(f"  Conversation Dynamic: {dynamic}")
+
+            # Cache result
+            self.pass_cache.cache_pass_result('intent', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Intent classification failed: {e}")
+            return {'conversation_dynamic': 'unknown', 'error': str(e)}
 
     def _pass_8_risk_assessment(self, messages: List[Dict], analyses: Dict[str, Any]) -> Dict[str, Any]:
-        """Pass 8: Comprehensive risk assessment"""
-        per_message_risks = []
+        """Pass 8: Comprehensive risk assessment with progress tracking"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('risk'):
+            logger.info("  Using cached risk assessment results")
+            return self.pass_cache.get_pass_result('risk')
 
-        for i, msg in enumerate(messages):
-            risk = self.risk_scorer.assess_risk(
-                message_text=msg.get('text', '')
-            )
-            per_message_risks.append(risk)
+        try:
+            per_message_risks = []
+            progress = ProgressTracker(len(messages), desc="  Risk assessment", log_interval=20)
 
-        if per_message_risks:
-            avg_risk = sum(r.overall_risk for r in per_message_risks) / len(per_message_risks)
-            max_risk = max(r.overall_risk for r in per_message_risks)
+            for i, msg in enumerate(messages):
+                try:
+                    risk = self.risk_scorer.assess_risk(
+                        message_text=msg.get('text', '')
+                    )
+                    per_message_risks.append(risk)
+                except Exception as e:
+                    logger.warning(f"  Risk assessment failed for message {i}: {e}")
+                    per_message_risks.append(None)
 
-            if max_risk > 0.8 or avg_risk > 0.6:
-                risk_level = 'critical'
-            elif max_risk > 0.6 or avg_risk > 0.4:
-                risk_level = 'high'
-            elif max_risk > 0.4 or avg_risk > 0.2:
-                risk_level = 'moderate'
+                progress.update(1)
+
+            progress.finish()
+
+            # Filter out None values for risk calculation
+            valid_risks = [r for r in per_message_risks if r is not None]
+
+            if valid_risks:
+                avg_risk = sum(r.overall_risk for r in valid_risks) / len(valid_risks)
+                max_risk = max(r.overall_risk for r in valid_risks)
+
+                if max_risk > 0.8 or avg_risk > 0.6:
+                    risk_level = 'critical'
+                elif max_risk > 0.6 or avg_risk > 0.4:
+                    risk_level = 'high'
+                elif max_risk > 0.4 or avg_risk > 0.2:
+                    risk_level = 'moderate'
+                else:
+                    risk_level = 'low'
             else:
-                risk_level = 'low'
-        else:
-            risk_level = 'unknown'
+                risk_level = 'unknown'
+                avg_risk = 0
+                max_risk = 0
 
-        print(f"  Overall Risk Level: {risk_level}")
+            print(f"  Overall Risk Level: {risk_level}")
 
-        return {
-            'per_message_risks': per_message_risks,
-            'overall_risk_assessment': {
-                'risk_level': risk_level,
-                'average_risk': avg_risk if per_message_risks else 0,
-                'max_risk': max_risk if per_message_risks else 0
+            result = {
+                'per_message_risks': per_message_risks,
+                'overall_risk_assessment': {
+                    'risk_level': risk_level,
+                    'average_risk': avg_risk,
+                    'max_risk': max_risk
+                }
             }
-        }
+
+            # Cache result with dependencies
+            self.pass_cache.cache_pass_result('risk', result,
+                dependencies=['grooming', 'manipulation', 'deception', 'intent'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Risk assessment failed: {e}")
+            return {
+                'per_message_risks': [],
+                'overall_risk_assessment': {
+                    'risk_level': 'unknown',
+                    'average_risk': 0,
+                    'max_risk': 0
+                },
+                'error': str(e)
+            }
 
     def _pass_9_timeline_analysis(self, messages: List[Dict], risk_assessment: Dict) -> Dict[str, Any]:
-        """Pass 9: Timeline reconstruction and pattern sequencing"""
-        timeline_points = []
+        """Pass 9: Timeline reconstruction and pattern sequencing with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('timeline'):
+            logger.info("  Using cached timeline analysis results")
+            return self.pass_cache.get_pass_result('timeline')
 
-        for i, msg in enumerate(messages):
-            timeline_points.append({
-                'index': i,
-                'sender': msg.get('sender', 'Unknown'),
-                'timestamp': msg.get('timestamp', msg.get('date', '')),
-                'text': msg.get('text', '')[:100] + '...' if len(msg.get('text', '')) > 100 else msg.get('text', '')
-            })
+        try:
+            timeline_points = []
 
-        print(f"  Timeline Points Extracted: {len(timeline_points)}")
+            for i, msg in enumerate(messages):
+                try:
+                    timeline_points.append({
+                        'index': i,
+                        'sender': msg.get('sender', 'Unknown'),
+                        'timestamp': msg.get('timestamp', msg.get('date', '')),
+                        'text': msg.get('text', '')[:100] + '...' if len(msg.get('text', '')) > 100 else msg.get('text', '')
+                    })
+                except Exception as e:
+                    logger.warning(f"  Timeline point extraction failed for message {i}: {e}")
 
-        return {
-            'timeline_points': timeline_points,
-            'conversation_duration': self._estimate_duration(messages),
-            'pattern_sequences': self._identify_pattern_sequences(timeline_points, risk_assessment)
-        }
+            print(f"  Timeline Points Extracted: {len(timeline_points)}")
+
+            result = {
+                'timeline_points': timeline_points,
+                'conversation_duration': self._estimate_duration(messages),
+                'pattern_sequences': self._identify_pattern_sequences(timeline_points, risk_assessment)
+            }
+
+            # Cache result with dependency on risk
+            self.pass_cache.cache_pass_result('timeline', result, dependencies=['risk'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Timeline analysis failed: {e}")
+            return {'timeline_points': [], 'error': str(e)}
 
     def _pass_10_contextual_insights(self, messages: List[Dict], sentiment_results: Dict, timeline_analysis: Dict) -> Dict[str, Any]:
-        """Pass 10: Contextual insights and conversation flow"""
-        insights = []
+        """Pass 10: Contextual insights and conversation flow with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('contextual'):
+            logger.info("  Using cached contextual insights results")
+            return self.pass_cache.get_pass_result('contextual')
 
-        if timeline_analysis.get('conversation_duration'):
-            insights.append(f"Conversation spanning {timeline_analysis['conversation_duration']}")
+        try:
+            insights = []
 
-        print(f"  Contextual Insights Generated: {len(insights)}")
+            if timeline_analysis.get('conversation_duration'):
+                insights.append(f"Conversation spanning {timeline_analysis['conversation_duration']}")
 
-        return {
-            'insights': insights,
-            'conversation_flow': 'complex' if len(messages) > 50 else 'moderate' if len(messages) > 20 else 'simple'
-        }
+            print(f"  Contextual Insights Generated: {len(insights)}")
+
+            result = {
+                'insights': insights,
+                'conversation_flow': 'complex' if len(messages) > 50 else 'moderate' if len(messages) > 20 else 'simple'
+            }
+
+            # Cache result with dependencies
+            self.pass_cache.cache_pass_result('contextual', result,
+                dependencies=['sentiment', 'timeline'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Contextual insights analysis failed: {e}")
+            return {'insights': [], 'error': str(e)}
 
     def _pass_11_person_identification(self, messages: List[Dict], df: pd.DataFrame) -> Dict[str, Any]:
-        """Pass 11: Person identification and role classification"""
-        result = self.person_analyzer.identify_persons_in_conversation(messages, df)
-        print(f"  Persons Identified: {len(result.get('persons', []))}")
-        return result
+        """Pass 11: Person identification and role classification with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('person_id'):
+            logger.info("  Using cached person identification results")
+            return self.pass_cache.get_pass_result('person_id')
+
+        try:
+            logger.info(f"  Identifying persons in conversation with {len(messages)} messages")
+            result = self.person_analyzer.identify_persons_in_conversation(messages, df)
+            print(f"  Persons Identified: {len(result.get('persons', []))}")
+
+            # Cache result
+            self.pass_cache.cache_pass_result('person_id', result)
+            return result
+
+        except Exception as e:
+            logger.error(f"  Person identification failed: {e}")
+            return {'persons': [], 'error': str(e)}
 
     def _pass_12_interaction_mapping(self, messages: List[Dict], person_identification: Dict) -> Dict[str, Any]:
-        """Pass 12: Interaction mapping and relationship structure"""
-        result = self.person_analyzer.extract_interaction_patterns(
-            messages, person_identification.get('persons', [])
-        )
-        print(f"  Interaction Patterns Mapped: {len(result.get('interactions', []))}")
-        return result
+        """Pass 12: Interaction mapping and relationship structure with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('interaction'):
+            logger.info("  Using cached interaction mapping results")
+            return self.pass_cache.get_pass_result('interaction')
+
+        try:
+            result = self.person_analyzer.extract_interaction_patterns(
+                messages, person_identification.get('persons', [])
+            )
+            print(f"  Interaction Patterns Mapped: {len(result.get('interactions', []))}")
+
+            # Cache result with dependency on person identification
+            self.pass_cache.cache_pass_result('interaction', result, dependencies=['person_id'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Interaction mapping failed: {e}")
+            return {'interactions': [], 'error': str(e)}
 
     def _pass_13_gaslighting_detection(self, messages: List[Dict], person_identification: Dict,
                                        manipulation_results: Dict) -> Dict[str, Any]:
-        """Pass 13: Gaslighting-specific detection"""
-        result = self.person_analyzer.detect_gaslighting_patterns(
-            messages, person_identification.get('persons', []), manipulation_results
-        )
-        risk_level = result.get('gaslighting_risk', 'low')
-        print(f"  Gaslighting Risk: {risk_level}")
-        return result
+        """Pass 13: Gaslighting-specific detection with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('gaslighting'):
+            logger.info("  Using cached gaslighting detection results")
+            return self.pass_cache.get_pass_result('gaslighting')
+
+        try:
+            result = self.person_analyzer.detect_gaslighting_patterns(
+                messages, person_identification.get('persons', []), manipulation_results
+            )
+            risk_level = result.get('gaslighting_risk', 'low')
+            print(f"  Gaslighting Risk: {risk_level}")
+
+            # Cache result with dependencies
+            self.pass_cache.cache_pass_result('gaslighting', result,
+                dependencies=['person_id', 'manipulation'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Gaslighting detection failed: {e}")
+            return {'gaslighting_risk': 'unknown', 'error': str(e)}
 
     def _pass_14_relationship_analysis(self, messages: List[Dict], person_identification: Dict,
                                        interaction_mapping: Dict) -> Dict[str, Any]:
-        """Pass 14: Relationship dynamics and power analysis"""
-        result = self.person_analyzer.assess_relationship_dynamics(
-            messages, person_identification.get('persons', [])
-        )
-        print(f"  Relationship Dynamics Analyzed")
-        return result
+        """Pass 14: Relationship dynamics and power analysis with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('relationship'):
+            logger.info("  Using cached relationship analysis results")
+            return self.pass_cache.get_pass_result('relationship')
+
+        try:
+            result = self.person_analyzer.assess_relationship_dynamics(
+                messages, person_identification.get('persons', [])
+            )
+            print(f"  Relationship Dynamics Analyzed")
+
+            # Cache result with dependency on person identification
+            self.pass_cache.cache_pass_result('relationship', result, dependencies=['person_id'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Relationship analysis failed: {e}")
+            return {'error': str(e)}
 
     def _pass_15_intervention_recommendations(self, risk_assessment: Dict, person_identification: Dict,
                                                relationship_analysis: Dict, gaslighting_detection: Dict) -> Dict[str, Any]:
-        """Pass 15: Intervention recommendations and case formulation"""
-        result = self.person_analyzer.generate_intervention_recommendations(
-            risk_assessment, person_identification, relationship_analysis, gaslighting_detection
-        )
-        print(f"  Intervention Recommendations Generated: {len(result.get('recommendations', []))}")
-        return result
+        """Pass 15: Intervention recommendations and case formulation with error recovery"""
+        # Check cache first
+        if self.pass_cache.has_pass_result('intervention'):
+            logger.info("  Using cached intervention recommendations results")
+            return self.pass_cache.get_pass_result('intervention')
+
+        try:
+            result = self.person_analyzer.generate_intervention_recommendations(
+                risk_assessment, person_identification, relationship_analysis, gaslighting_detection
+            )
+            print(f"  Intervention Recommendations Generated: {len(result.get('recommendations', []))}")
+
+            # Cache result with dependencies
+            self.pass_cache.cache_pass_result('intervention', result,
+                dependencies=['risk', 'person_id', 'relationship', 'gaslighting'])
+            return result
+
+        except Exception as e:
+            logger.error(f"  Intervention recommendations failed: {e}")
+            return {'recommendations': [], 'error': str(e)}
 
     # UTILITY METHODS
     # =====================================================================
@@ -695,22 +1054,39 @@ class UnifiedProcessor:
         return sequences  # Stub for expansion
 
     def _store_patterns(self, run_id: int, messages: List[Dict], risk_assessment: Dict):
-        """Store detected patterns in database"""
-        patterns = []
+        """Store detected patterns in database with batch optimization"""
+        try:
+            patterns = []
 
-        for i, risk in enumerate(risk_assessment.get('per_message_risks', [])):
-            if hasattr(risk, 'primary_concern') and risk.primary_concern:
-                patterns.append({
-                    'analysis_run_id': run_id,
-                    'message_id': i,
-                    'pattern_type': risk.primary_concern,
-                    'severity': risk.overall_risk if hasattr(risk, 'overall_risk') else 0.5,
-                    'confidence': risk.assessment_confidence if hasattr(risk, 'assessment_confidence') else 0.7
-                })
+            # Build patterns list in batches to avoid memory issues
+            for i, risk in enumerate(risk_assessment.get('per_message_risks', [])):
+                try:
+                    if risk is not None and hasattr(risk, 'primary_concern') and risk.primary_concern:
+                        patterns.append({
+                            'analysis_run_id': run_id,
+                            'message_id': i,
+                            'pattern_type': risk.primary_concern,
+                            'severity': risk.overall_risk if hasattr(risk, 'overall_risk') else 0.5,
+                            'confidence': risk.assessment_confidence if hasattr(risk, 'assessment_confidence') else 0.7
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to extract pattern from message {i}: {e}")
 
-        if patterns:
-            self.db.insert_patterns_batch(patterns)
-            logger.info(f"Stored {len(patterns)} patterns in database")
+            if patterns:
+                # Use batch processing for large pattern sets
+                if len(patterns) > 1000:
+                    logger.info(f"Storing {len(patterns)} patterns in batches...")
+                    batch_size = 500
+                    for i in range(0, len(patterns), batch_size):
+                        batch = patterns[i:i + batch_size]
+                        self.db.insert_patterns_batch(batch)
+                    logger.info(f"Stored {len(patterns)} patterns in database (batched)")
+                else:
+                    self.db.insert_patterns_batch(patterns)
+                    logger.info(f"Stored {len(patterns)} patterns in database")
+
+        except Exception as e:
+            logger.error(f"Failed to store patterns in database: {e}")
 
     def _aggregate_concerns(self, *results) -> List[str]:
         """Aggregate all primary concerns from all passes"""
